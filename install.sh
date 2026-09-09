@@ -59,20 +59,52 @@ done
 [[ -n $SUI_DB ]] || die "دیتابیس s-ui پیدا نشد — اول s-ui را نصب/بالا بیاور"
 echo "   دیتابیس پنل: $SUI_DB"
 
-read -r WEB_PORT WEB_DOMAIN CERT CERTKEY SUB_PORT < <(python3 - "$SUI_DB" << 'PY'
+# خواندن تنظیمات پنل — با جداکنندهٔ | تا فیلدهای خالی مقادیر را شیفت ندهند
+IFS='|' read -r WEB_PORT WEB_DOMAIN CERT CERTKEY SUB_PORT < <(python3 - "$SUI_DB" << 'PY'
 import sqlite3, sys
 n = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
-g = lambda k: (n.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone() or ('',))[0]
-print(g('webPort') or 2095, g('webDomain') or '', g('webCertFile') or '', g('webKeyFile') or '', g('subPort') or 2097)
+g = lambda k: (n.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone() or ('',))[0] or ''
+print("|".join([
+    g('webPort') or '2095',
+    g('webDomain'),
+    g('webCertFile'),
+    g('webKeyFile'),
+    g('subPort') or '2097',
+]))
 PY
 )
-[[ -n $WEB_DOMAIN ]] || read -r -p "❓ دامنهٔ سرور (مثل vpn.example.com): " WEB_DOMAIN
-[[ -n $WEB_DOMAIN ]] || die "دامنه خالی است — اول در تنظیمات پنل دامنه را ست کن یا همین‌جا بده"
-echo "   پنل: https://${WEB_DOMAIN}:${WEB_PORT} | ساب: ${SUB_PORT} | گواهی: ${CERT}"
+WEB_PORT=${WEB_PORT:-2095}
+SUB_PORT=${SUB_PORT:-2097}
 
-curl -sk -o /dev/null --max-time 8 --resolve "${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1" \
-  "https://${WEB_DOMAIN}:${WEB_PORT}/" || die "پنل s-ui روی ${WEB_PORT} جواب نمی‌دهد"
-echo "   ✔ پنل زنده است"
+# دامنه: از پنل → وگرنه از nginx موجود → وگرنه از گواهی موجود → وگرنه بپرس
+if [[ -z $WEB_DOMAIN ]]; then
+  WEB_DOMAIN=$(grep -rhoPm1 'server_name\s+\K[^;]+' /etc/nginx/sites-enabled/ 2>/dev/null | head -1 | xargs || true)
+  WEB_DOMAIN=${WEB_DOMAIN%% *}
+fi
+if [[ -z $WEB_DOMAIN && -d /root/cert ]]; then
+  guess=$(ls -1 /root/cert 2>/dev/null | head -1)
+  [[ $guess == *.* ]] && WEB_DOMAIN=$guess
+fi
+read -r -p "❓ دامنهٔ پنل/سرور [${WEB_DOMAIN:-نیاز به ورودی}]: " ans
+[[ -n $ans ]] && WEB_DOMAIN=$ans
+[[ -n $WEB_DOMAIN ]] || die "دامنه مشخص نشد"
+
+# گواهی: از پنل → وگرنه مسیر استاندارد کنار دامنه
+if [[ -z $CERT || -z $CERTKEY ]]; then
+  if [[ -f /root/cert/${WEB_DOMAIN}/fullchain.pem ]]; then
+    CERT="/root/cert/${WEB_DOMAIN}/fullchain.pem"
+    CERTKEY="/root/cert/${WEB_DOMAIN}/privkey.pem"
+    echo "   گواهی از مسیر استاندارد پیدا شد: $CERT"
+  fi
+fi
+echo "   پنل: https://${WEB_DOMAIN}:${WEB_PORT} | ساب: ${SUB_PORT} | گواهی: ${CERT:-خواهد صادر شد}"
+
+if curl -sk -o /dev/null --max-time 8 --resolve "${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1" \
+  "https://${WEB_DOMAIN}:${WEB_PORT}/"; then
+  echo "   ✔ پنل زنده است"
+else
+  echo -e "\033[1;33m   ⚠ پنل روی ${WEB_PORT} جواب نداد — ادامه می‌دهم (سرویس s-ui را بعداً چک کن: systemctl status s-ui)\033[0m"
+fi
 
 # ------------------------------------------------------------ 2. env
 say "تنظیمات بات (sui-bot.env)"
