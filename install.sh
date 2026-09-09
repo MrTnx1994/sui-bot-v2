@@ -255,9 +255,13 @@ chown sui-bot:sui-bot /var/lib/sui-bot
 
 # ------------------------------------------------------------ 6. app install
 say "Installing bot (venv + package from cloned source)"
-command -v python3 >/dev/null || { apt-get update -qq; apt-get install -y -qq python3 python3-venv; }
+if ! command -v python3 >/dev/null || ! dpkg -s python3-venv >/dev/null 2>&1; then
+  apt-get update -qq
+  apt-get install -y -qq python3 python3-venv
+fi
 rm -rf /opt/sui-bot-v2
-python3 -m venv /opt/sui-bot-v2/.venv
+python3 -m venv /opt/sui-bot-v2/.venv \
+  || die "venv creation failed — run: apt install python3-venv"
 /opt/sui-bot-v2/.venv/bin/pip install -q --upgrade pip
 /opt/sui-bot-v2/.venv/bin/pip install -q "$HERE"
 echo "   version: $(/opt/sui-bot-v2/.venv/bin/python -c 'import sui_bot; print(getattr(sui_bot,"__version__","ok"))' 2>/dev/null || echo ok)"
