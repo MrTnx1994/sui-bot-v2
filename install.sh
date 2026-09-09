@@ -283,28 +283,36 @@ systemctl enable --now sui-bot sui-subpage
 if [[ ${SKIP_NGINX:-0} != 1 ]]; then
   say "nginx — port 2096 (browser→UI+menu / VPN apps→raw feed)"
 
-  # s-ui's own subscription service must NOT own 2096 — nginx needs it.
-  # If s-ui sub is bound to 2096, move the panel's subPort to 2097.
-  if command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q ':2096 '; then
+  # Normalize: s-ui's own sub service must live on 2097 (nginx owns 2096),
+  # and the panel's advertised subURI must point at the public nginx origin.
+  if ss -ltn 2>/dev/null | grep -q ':2096 ' || [[ $SUB_PORT == 2096 ]]; then
     owner=$(ss -ltnp 2>/dev/null | grep ':2096 ' | grep -oP 'users:\(\("\K[^"]+' | head -1 || true)
-    echo "   port 2096 is used by: ${owner:-unknown}"
-    if [[ $owner == s-ui* ]]; then
-      say "s-ui sub occupies 2096 → moving panel subPort to 2097 (nginx takes 2096)"
-      systemctl stop s-ui 2>/dev/null || true
-      python3 - "$SUI_DB" << 'PY'
+    echo "   port 2096 currently used by: ${owner:-unknown}"
+  fi
+  say "Normalizing: s-ui sub → 2097, public subURI → https://${WEB_DOMAIN}:2096"
+  systemctl stop s-ui 2>/dev/null || true
+  sleep 1
+  python3 - "$SUI_DB" "$WEB_DOMAIN" << 'PY'
 import sqlite3, sys
 n = sqlite3.connect(sys.argv[1], timeout=15)
-if n.execute("SELECT 1 FROM settings WHERE key='subPort'").fetchone():
-    n.execute("UPDATE settings SET value='2097' WHERE key='subPort'")
-else:
-    n.execute("INSERT INTO settings(key,value) VALUES ('subPort','2097')")
+dom = sys.argv[2]
+def upsert(key, value):
+    if n.execute("SELECT 1 FROM settings WHERE key=?", (key,)).fetchone():
+        n.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
+    else:
+        n.execute("INSERT INTO settings(key,value) VALUES (?,?)", (key, value))
+upsert('subPort', '2097')
+upsert('subURI', f'https://{dom}:2096')
 n.commit()
-print("   panel subPort → 2097")
+print("   panel: subPort → 2097, subURI → https://%s:2096" % dom)
 PY
-      SUB_PORT=2097
-      systemctl start s-ui 2>/dev/null || true
-      sleep 3
-    fi
+  SUB_PORT=2097
+  systemctl start s-ui 2>/dev/null || true
+  sleep 3
+  if ss -ltn 2>/dev/null | grep -q ':2096 '; then
+    warn "port 2096 is STILL occupied after s-ui restart — investigate: ss -ltnp | grep 2096"
+  else
+    echo "   ✔ 2096 is free for nginx; s-ui sub moved to 2097"
   fi
 
   # sub backend scheme: https only if the panel sub service has its own cert+key
@@ -328,7 +336,11 @@ PY
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx
   sleep 1
-  ss -ltn 2>/dev/null | grep -q ':2096 ' && echo "   ✔ nginx is listening on 2096" || warn "nothing is listening on 2096 yet"
+  if ss -ltnp 2>/dev/null | grep ':2096 ' | grep -q nginx; then
+    echo "   ✔ nginx is serving 2096"
+  else
+    warn "nginx did not take 2096 — check: ss -ltnp | grep 2096"
+  fi
 fi
 
 # ------------------------------------------------------------ 9. verify
