@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  SUI-BOT STACK — نصب یک‌خطی از گیت‌هاب
+#  SUI-BOT STACK — one-line installer from GitHub
 #
-#  نصب کامل: sui-bot (بات تلگرام) + sui-subpage (UI ساب + منو) + nginx (2096)
-#  با تشخیص خودکار s-ui روی همین سرور (پورت، دامنه، گواهی، توکن API)
+#  Run:
+#    REPO_URL=https://github.com/<USER>/<REPO>.git bash <(curl -fsSL https://raw.githubusercontent.com/<USER>/<REPO>/master/install.sh)
 #
-#  اجرا:
-#    bash <(curl -fsSL https://raw.githubusercontent.com/<USER>/<REPO>/main/install.sh)
-#
-#  گزینه‌ها (env):
-#    REPO_RAW      آدرس raw ریپو (پیش‌فرض: همین اسکریپت خودش را تشخیص می‌دهد)
-#    SUI_BOT_ENV   مسیر فایل env آماده (اگر نباشد تعاملی می‌پرسد)
-#    SKIP_NGINX=1  اگر nginx/2096 را جداگانه می‌چینی
+#  Installs: sui-bot (Telegram bot) + sui-subpage (sub UI + menu) + nginx (2096)
+#  Auto-detects the local s-ui panel (port, domain, cert, API token).
 # ============================================================================
 set -euo pipefail
 
@@ -20,64 +15,62 @@ exec > >(tee -a "$LOG") 2>&1
 
 say() { echo -e "\n\033[1;36m==> $*\033[0m"; }
 die() { echo -e "\033[1;31m!! $*\033[0m"; exit 1; }
+warn(){ echo -e "\033[1;33m   ⚠ $*\033[0m"; }
 
-[[ $EUID -eq 0 ]] || die "با root اجرا کن (sudo -i)"
+[[ $EUID -eq 0 ]] || die "Run as root (sudo -i)"
 
-# ------------------------------------------------------------ 0. پاکسازی نسخه‌های قبلی
-say "پاکسازی نسخه‌های قدیمی (v1/v2 قبلی)"
-# سرویس‌های قدیمی هر مسیری که بودند
+# ------------------------------------------------------------ 0. cleanup old installs
+say "Cleaning up old installs (v1/v2)"
 for old_svc in $(systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}' | grep -E '^(sui-bot|sui-subpage)\.service' || true); do
   systemctl stop "$old_svc" 2>/dev/null || true
   systemctl disable "$old_svc" 2>/dev/null || true
-  echo "   سرویس قدیمی متوقف شد: $old_svc"
+  echo "   stopped old service: $old_svc"
 done
-# نصب pip قدیمی در هر venv
 for old_venv in /opt/sui-bot/.venv /opt/sui-bot-v2/.venv; do
-  [[ -x $old_venv/bin/pip ]] && { "$old_venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true; echo "   پکیج قدیمی حذف شد: $old_venv"; }
+  if [[ -x $old_venv/bin/pip ]]; then
+    "$old_venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
+    echo "   removed old package: $old_venv"
+  fi
 done
-# فایل‌های قدیمی — داده‌ها (/var/lib/sui-bot و /etc/sui-bot) دست‌نخورده می‌مانند
+# NOTE: data (/var/lib/sui-bot) and config (/etc/sui-bot) are preserved
 rm -rf /opt/sui-bot /opt/sui-bot-v2 /opt/sui-bot-v2-src.old
 rm -f /etc/systemd/system/sui-bot.service /etc/systemd/system/sui-subpage.service
 systemctl daemon-reload
-echo "   ✔ آمادهٔ نصب تمیز (داده‌ها و تنظیمات حفظ شدند)"
+echo "   ✔ ready for clean install (data & tokens preserved)"
 
-# ------------------------------------------------------------ 0. منبع کد
+# ------------------------------------------------------------ 0.1 repo source
 REPO_URL="${REPO_URL:-}"
 if [[ -z $REPO_URL ]]; then
-  # از خود اسکریپت آدرس ریپو را استخراج کن (پشتیبانی از curl-pipe)
   SCRIPT_SRC="${BASH_SOURCE[0]}"
   if [[ -f $SCRIPT_SRC ]] && grep -q "DEFAULT_REPO_URL=" "$SCRIPT_SRC" 2>/dev/null; then
     REPO_URL="$(grep -m1 'DEFAULT_REPO_URL=' "$SCRIPT_SRC" | cut -d'"' -f2)"
   fi
 fi
 REPO_URL="${REPO_URL:-__DEFAULT_REPO_URL__}"
-[[ $REPO_URL == *"__DEFAULT_REPO_URL__"* ]] && die "REPO_URL را ست کن: REPO_URL=https://github.com/user/repo bash install.sh"
+[[ $REPO_URL == *"__DEFAULT_REPO_URL__"* ]] && die "Set REPO_URL: REPO_URL=https://github.com/user/repo bash install.sh"
 
-say "دریافت سورس از ${REPO_URL}"
+say "Fetching source from ${REPO_URL}"
 rm -rf /opt/sui-bot-v2-src
 mkdir -p /opt/sui-bot-v2-src
-if command -v git >/dev/null; then
-  # بدون -b → برنچ پیش‌فرضِ خود ریپو clone می‌شود (master/main فرقی نمی‌کند)
-  git clone --depth 1 "$REPO_URL" /opt/sui-bot-v2-src 2>/dev/null \
-    || die "clone ناموفق — REPO_URL و دسترسی را چک کن"
-else
+if ! command -v git >/dev/null; then
   apt-get update -qq && apt-get install -y -qq git ca-certificates
-  git clone --depth 1 "$REPO_URL" /opt/sui-bot-v2-src \
-    || die "clone ناموفق"
 fi
+# no -b → clones the repo's default branch (master/main both fine)
+git clone --depth 1 "$REPO_URL" /opt/sui-bot-v2-src 2>/dev/null \
+  || die "git clone failed — check REPO_URL and access"
 HERE=/opt/sui-bot-v2-src
 cd "$HERE"
 
-# ------------------------------------------------------------ 1. s-ui
-say "پیدا کردن s-ui روی این سرور"
+# ------------------------------------------------------------ 1. find s-ui panel
+say "Detecting s-ui panel on this server"
 SUI_DB=""
 for cand in /usr/local/s-ui/db/s-ui.db /opt/s-ui/db/s-ui.db /usr/local/s-ui/s-ui.db; do
   [[ -f $cand ]] && SUI_DB=$cand && break
 done
-[[ -n $SUI_DB ]] || die "دیتابیس s-ui پیدا نشد — اول s-ui را نصب/بالا بیاور"
-echo "   دیتابیس پنل: $SUI_DB"
+[[ -n $SUI_DB ]] || die "s-ui database not found — install/start s-ui first (systemctl status s-ui)"
+echo "   panel DB: $SUI_DB"
 
-# خواندن تنظیمات پنل — با جداکنندهٔ | تا فیلدهای خالی مقادیر را شیفت ندهند
+# pipe-delimited parse so empty fields do NOT shift values
 IFS='|' read -r WEB_PORT WEB_DOMAIN CERT CERTKEY SUB_PORT < <(python3 - "$SUI_DB" << 'PY'
 import sqlite3, sys
 n = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
@@ -94,7 +87,7 @@ PY
 WEB_PORT=${WEB_PORT:-2095}
 SUB_PORT=${SUB_PORT:-2097}
 
-# دامنه: از پنل → وگرنه از nginx موجود → وگرنه از گواهی موجود → وگرنه بپرس
+# domain: panel settings → existing nginx vhost → cert dir → ask
 if [[ -z $WEB_DOMAIN ]]; then
   WEB_DOMAIN=$(grep -rhoPm1 'server_name\s+\K[^;]+' /etc/nginx/sites-enabled/ 2>/dev/null | head -1 | xargs || true)
   WEB_DOMAIN=${WEB_DOMAIN%% *}
@@ -103,99 +96,90 @@ if [[ -z $WEB_DOMAIN && -d /root/cert ]]; then
   guess=$(ls -1 /root/cert 2>/dev/null | head -1)
   [[ $guess == *.* ]] && WEB_DOMAIN=$guess
 fi
-read -r -p "❓ دامنهٔ پنل/سرور [${WEB_DOMAIN:-نیاز به ورودی}]: " ans
+read -r -p "❓ Server/panel domain [${WEB_DOMAIN:-required}]: " ans
 [[ -n $ans ]] && WEB_DOMAIN=$ans
-[[ -n $WEB_DOMAIN ]] || die "دامنه مشخص نشد"
+[[ -n $WEB_DOMAIN ]] || die "Domain is required"
 
-# گواهی: از پنل → وگرنه مسیر استاندارد کنار دامنه
+# cert: panel settings → standard path next to domain
 if [[ -z $CERT || -z $CERTKEY ]]; then
   if [[ -f /root/cert/${WEB_DOMAIN}/fullchain.pem ]]; then
     CERT="/root/cert/${WEB_DOMAIN}/fullchain.pem"
     CERTKEY="/root/cert/${WEB_DOMAIN}/privkey.pem"
-    echo "   گواهی از مسیر استاندارد پیدا شد: $CERT"
+    echo "   cert found at standard path: $CERT"
   fi
 fi
-echo "   پنل: https://${WEB_DOMAIN}:${WEB_PORT} | ساب: ${SUB_PORT} | گواهی: ${CERT:-خواهد صادر شد}"
+echo "   panel: https://${WEB_DOMAIN}:${WEB_PORT} | sub: ${SUB_PORT} | cert: ${CERT:-will be issued}"
 
 if curl -sk -o /dev/null --max-time 8 --resolve "${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1" \
   "https://${WEB_DOMAIN}:${WEB_PORT}/"; then
-  echo "   ✔ پنل زنده است"
+  echo "   ✔ panel is alive"
 else
-  echo -e "\033[1;33m   ⚠ پنل روی ${WEB_PORT} جواب نداد — ادامه می‌دهم (سرویس s-ui را بعداً چک کن: systemctl status s-ui)\033[0m"
+  warn "panel did not answer on ${WEB_PORT} — continuing anyway (check later: systemctl status s-ui)"
 fi
 
-# ------------------------------------------------------------ 2. env
-say "تنظیمات بات (sui-bot.env)"
+# ------------------------------------------------------------ 2. bot env (interactive)
+say "Bot configuration (/etc/sui-bot/sui-bot.env)"
 mkdir -p /etc/sui-bot
 if [[ -n ${SUI_BOT_ENV:-} && -f $SUI_BOT_ENV ]]; then
   cp "$SUI_BOT_ENV" /etc/sui-bot/sui-bot.env
 elif [[ -f /etc/sui-bot/sui-bot.env ]]; then
-  echo "   env موجود پیدا شد (بکاپ گرفته شد) — فقط مقادیر خالی را ازت می‌پرسم"
+  echo "   existing env found (backup taken) — press Enter to keep current values"
   cp /etc/sui-bot/sui-bot.env "/etc/sui-bot/sui-bot.env.bak-$(date +%s)"
 elif [[ -f $HERE/sui-bot.env.sample ]]; then
   cp "$HERE/sui-bot.env.sample" /etc/sui-bot/sui-bot.env
-  echo "   نمونهٔ تنظیمات ساخته شد → /etc/sui-bot/sui-bot.env"
+  echo "   created from sample → /etc/sui-bot/sui-bot.env"
 else
   touch /etc/sui-bot/sui-bot.env
 fi
 
-# set_env_value KEY "سؤال" [پیش‌فرض]
-#  → مقدار فعلی را (ماسک‌شده) نشان می‌دهد؛ Enter = نگه‌داشتن، تایپ = جایگزینی
-mask() {
-  local v=$1
-  if [[ ${#v} -gt 10 ]]; then echo "${v:0:4}...${v: -4}"; else echo "$v"; fi
-}
+# set_env_value KEY "question" [default] [numeric|csv|secret]
+mask() { local v=$1; if [[ ${#v} -gt 10 ]]; then echo "${v:0:4}...${v: -4}"; else echo "$v"; fi; }
 set_env_value() {
-  local key=$1 question=$2 default=${3:-} current="" value="" hint="" secret=${4:-0}
+  local key=$1 question=$2 default=${3:-} mode=${4:-} current="" value="" hint=""
   current=$(grep -E "^${key}=" /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
   if [[ -n $current && $current != "replace-me" && $current != "0000-0000-0000-0000" ]]; then
-    local shown; shown=$(mask "$current")
-    read -r -p "   ${key} فعلی: ${shown}  ← Enter=نگه‌داشتن | مقدار جدید بفرست: " value
-    [[ -z $value ]] && { echo "      (نگه داشته شد)"; return; }
+    read -r -p "   ${key} current: $(mask "$current")  [Enter=keep | type new]: " value
+    [[ -z $value ]] && { echo "      (kept)"; return; }
   else
     [[ -n $default ]] && hint=" [${default}]"
-    read -r -p "❓ ${question}${hint}: " value || die "ورودی خوانده نشد (ترمینال تعاملی لازم است)"
+    read -r -p "❓ ${question}${hint}: " value || die "stdin not readable (interactive terminal required)"
     [[ -z $value && -n $default ]] && value="$default"
-    [[ -z $value ]] && { echo "      (خالی گذاشته شد — بعداً با nano /etc/sui-bot/sui-bot.env پر کن)"; return; }
+    [[ -z $value ]] && { echo "      (left empty — fill later: nano /etc/sui-bot/sui-bot.env)"; return; }
   fi
+  # validation loop
+  while true; do
+    case $mode in
+      numeric) [[ $value =~ ^[0-9]{4,20}$ ]] && break ;;
+      csv)     [[ $value =~ ^[0-9]+(,[0-9]+)*$ ]] && break ;;
+      *)       break ;;
+    esac
+    read -r -p "   ✗ invalid format (numbers only${mode:+, comma-separated}). Retry: " value
+  done
   sed -i "/^${key}=/d" /etc/sui-bot/sui-bot.env
   echo "${key}=\"${value}\"" >> /etc/sui-bot/sui-bot.env
-  echo "      ← ثبت شد"
+  echo "      ← saved"
 }
 
 echo "────────────────────────────────────────────────────────"
-echo "  اطلاعات اتصال ربات (Enter خالی = نگه‌داشتن مقدار فعلی)"
+echo "  Bot connection info  (Enter = keep current value)"
 echo "────────────────────────────────────────────────────────"
-set_env_value "BOT_TOKEN"            "توکن ربات تلگرام (از @BotFather)"
-set_env_value "SUI_TOKEN"            "توکن API پنل s-ui (پنل → تنظیمات → API Token)"
-set_env_value "ADMIN_TELEGRAM_ID"    "آیدی عددی ادمین اصلی (از @userinfobot)"
+set_env_value "BOT_TOKEN"            "Telegram bot token (from @BotFather)"
+set_env_value "SUI_TOKEN"            "s-ui panel API token (panel → Settings → API Token)"
+set_env_value "ADMIN_TELEGRAM_ID"    "Primary admin NUMERIC Telegram ID (get it from @userinfobot)" "" numeric
 PRIMARY_ID=$(grep -E '^ADMIN_TELEGRAM_ID=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs)
-set_env_value "ADMIN_IDS"            "آیدی ادمین‌های دیگر با کاما" "${PRIMARY_ID}"
-set_env_value "BOT_DISPLAY_NAME"     "اسم نمایشی ربات" "Vpnfiy"
-set_env_value "PAYMENT_CARD_NUMBER"  "شماره کارت برای کارت‌به‌کارت"
-set_env_value "PAYMENT_CARD_HOLDER"  "به نامِ صاحب کارت"
-set_env_value "ZARINPAL_MERCHANT_ID" "مرچنت‌کد زرین‌پال (اختیاری — Enter = فقط کارت‌به‌کارت)"
+set_env_value "ADMIN_IDS"            "Other admin numeric IDs, comma-separated" "${PRIMARY_ID}" csv
+set_env_value "BOT_DISPLAY_NAME"     "Bot display name" "Vpnfiy"
+set_env_value "PAYMENT_CARD_NUMBER"  "Card number for card-to-card payments"
+set_env_value "PAYMENT_CARD_HOLDER"  "Card holder name"
+set_env_value "ZARINPAL_MERCHANT_ID" "ZarinPal merchant code (optional — Enter = card-to-card only)"
 chmod 600 /etc/sui-bot/sui-bot.env
 
 BOT_TOKEN_VAL=$(grep -E '^BOT_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"')
 [[ -n $BOT_TOKEN_VAL && $BOT_TOKEN_VAL != "replace-me" ]] \
-  || die "BOT_TOKEN خالی ماند — بدون توکن ربات بالا نمی‌آید؛ دوباره اجرا کن."
+  || die "BOT_TOKEN is empty — the bot cannot start; run the installer again."
 
-# SUI_HOST و SUB_BASE و منو را با مقادیر همین سرور بازنویسی کن
-SUI_TOKEN_VAL=$(grep -E '^SUI_TOKEN=' /etc/sui-bot/sui-bot.env | cut -d= -f2- | tr -d '"')
-sed -i "s#^SUI_HOST=.*#SUI_HOST=\"https://${WEB_DOMAIN}:${WEB_PORT}/app\"#" /etc/sui-bot/sui-bot.env
-grep -q '^SUB_BASE_URL_OVERRIDE=' /etc/sui-bot/sui-bot.env \
-  && sed -i "s#^SUB_BASE_URL_OVERRIDE=.*#SUB_BASE_URL_OVERRIDE=\"https://${WEB_DOMAIN}:2096/sub\"#" /etc/sui-bot/sui-bot.env \
-  || echo "SUB_BASE_URL_OVERRIDE=\"https://${WEB_DOMAIN}:2096/sub\"" >> /etc/sui-bot/sui-bot.env
-# دکمهٔ منو (مینی‌اپ) — روی همین دامنهٔ 2096
-grep -q '^MENU_WEBAPP_URL=' /etc/sui-bot/sui-bot.env \
-  && sed -i "s#^MENU_WEBAPP_URL=.*#MENU_WEBAPP_URL=\"https://${WEB_DOMAIN}:2096/sub/menu\"#" /etc/sui-bot/sui-bot.env \
-  || echo "MENU_WEBAPP_URL=\"https://${WEB_DOMAIN}:2096/sub/menu\"" >> /etc/sui-bot/sui-bot.env
-echo "   SUI_HOST → https://${WEB_DOMAIN}:${WEB_PORT}/app"
-echo "   MENU     → https://${WEB_DOMAIN}:2096/sub/menu"
-
-# ------------------------------------------------------------ 3. token
-say "ساخت/سازگاری توکن API پنل"
+# ------------------------------------------------------------ 3. panel API token compatibility
+say "Ensuring API token exists inside the panel DB"
 python3 - "$SUI_DB" "$SUI_TOKEN_VAL" << 'PY'
 import sqlite3, sys, time
 db, tok = sys.argv[1], sys.argv[2]
@@ -204,34 +188,34 @@ row = n.execute("SELECT id, expiry FROM tokens WHERE token=?", (tok,)).fetchone(
 if row:
     if row[1] and row[1] < time.time():
         n.execute("UPDATE tokens SET expiry=? WHERE id=?", (int(time.time()) + 315360000, row[0]))
-        n.commit(); print("   توکن موجود — انقضا تمدید شد (۱۰ سال)")
+        n.commit(); print("   existing token — expiry extended (10 years)")
     else:
-        print("   توکن موجود در پنل هست — مشکلی نیست")
+        print("   existing token is valid — nothing to do")
 else:
     if tok in ("", "replace-me"):
-        print("   ⚠ توکن خالی/نمونه است — بعد از پر کردن env دوباره اجرا کن")
+        print("   ⚠ token empty/sample — fill env and re-run installer")
     else:
         n.execute("INSERT INTO tokens(desc, token, expiry, user_id) VALUES (?,?,?,1)",
                   ("telegram-bot", tok, int(time.time()) + 315360000))
-        n.commit(); print("   توکن داخل پنل ساخته شد")
+        n.commit(); print("   token created inside panel DB")
 PY
-# ------------------------------------------------------------ 4. cert
-say "گواهی SSL"
-if [[ -f $CERT && -f $CERTKEY ]]; then
-  echo "   گواهی موجود: $CERT"
+
+# ------------------------------------------------------------ 4. TLS certificate
+say "TLS certificate"
+if [[ -n $CERT && -f $CERT && -n $CERTKEY && -f $CERTKEY ]]; then
+  echo "   using existing cert: $CERT"
 else
-  say "گواهی نیست — صدور با acme.sh (standalone روی 80)"
+  say "No cert found — issuing with acme.sh (standalone, port 80)"
   apt-get install -y -qq socat >/dev/null 2>&1 || true
   curl -fsSL https://get.acme.sh | sh -s email="${ACME_EMAIL:-admin@${WEB_DOMAIN}}" >/dev/null 2>&1 \
-    || die "acme.sh نصب نشد — یا ACME_EMAIL=you@mail.com ست کن یا گواهی را دستی بیاور"
+    || die "acme.sh install failed — or provide cert manually"
   ~/.acme.sh/acme.sh --issue -d "$WEB_DOMAIN" --standalone \
     && ~/.acme.sh/acme.sh --install-cert -d "$WEB_DOMAIN" \
         --fullchain-file "/root/cert/${WEB_DOMAIN}/fullchain.pem" \
         --key-file       "/root/cert/${WEB_DOMAIN}/privkey.pem" \
-    || die "صدور گواهی ناموفق — DNS دامنه را به این سرور نشان بده"
+    || die "certificate issuance failed — point DNS of ${WEB_DOMAIN} to this server first"
   CERT="/root/cert/${WEB_DOMAIN}/fullchain.pem"
   CERTKEY="/root/cert/${WEB_DOMAIN}/privkey.pem"
-  # مسیر گواهی را در پنل هم ثبت کن
   python3 - "$SUI_DB" "$CERT" "$CERTKEY" << 'PY'
 import sqlite3, sys
 db, cert, key = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -243,33 +227,31 @@ for k, v in (("webCertFile", cert), ("webKeyFile", key)):
         n.execute("INSERT INTO settings(key,value) VALUES (?,?)", (k, v))
 n.commit()
 PY
-  echo "   ✔ گواهی صادر و در پنل ثبت شد"
+  echo "   ✔ certificate issued and registered in panel"
 fi
 
-# ------------------------------------------------------------ 5. user
-say "کاربر سرویس sui-bot"
+# ------------------------------------------------------------ 5. service user
+say "Service user sui-bot"
 getent passwd sui-bot >/dev/null || useradd --system --home-dir /var/lib/sui-bot --create-home --shell /usr/sbin/nologin sui-bot
 mkdir -p /var/lib/sui-bot
 chown sui-bot:sui-bot /var/lib/sui-bot
 
-# ------------------------------------------------------------ 6. app
-say "نصب بات (venv + پکیج از سورس clone شده)"
+# ------------------------------------------------------------ 6. app install
+say "Installing bot (venv + package from cloned source)"
 command -v python3 >/dev/null || { apt-get update -qq; apt-get install -y -qq python3 python3-venv; }
 rm -rf /opt/sui-bot-v2
 python3 -m venv /opt/sui-bot-v2/.venv
 /opt/sui-bot-v2/.venv/bin/pip install -q --upgrade pip
 /opt/sui-bot-v2/.venv/bin/pip install -q "$HERE"
-echo "   نسخه: $(/opt/sui-bot-v2/.venv/bin/python -c 'import sui_bot; print(getattr(sui_bot,"__version__","ok"))' 2>/dev/null || echo ok)"
+echo "   version: $(/opt/sui-bot-v2/.venv/bin/python -c 'import sui_bot; print(getattr(sui_bot,"__version__","ok"))' 2>/dev/null || echo ok)"
 
-# ------------------------------------------------------------ 7. systemd + ابزارهای مدیریتی
-say "سرویس‌های systemd + دستورهای مدیریتی"
+# ------------------------------------------------------------ 7. systemd + management tools
+say "systemd services + management commands"
 cp "$HERE/units/sui-bot.service" /etc/systemd/system/
 cp "$HERE/units/sui-subpage.service" /etc/systemd/system/
-# sui-bot (مدیریتی) / sui-bot-update / sui-bot-uninstall — در دسترس همه‌جا
 install -m 755 "$HERE/sui-bot"       /usr/local/bin/sui-bot
 install -m 755 "$HERE/update.sh"     /usr/local/bin/sui-bot-update
 install -m 755 "$HERE/uninstall.sh"  /usr/local/bin/sui-bot-uninstall
-# آدرس ریپو را ثبت کن تا sui-bot-update بدون آرگومان کار کند
 grep -q '^SUI_BOT_REPO=' /etc/sui-bot/sui-bot.env \
   && sed -i "s#^SUI_BOT_REPO=.*#SUI_BOT_REPO=\"${REPO_URL}\"#" /etc/sui-bot/sui-bot.env \
   || echo "SUI_BOT_REPO=\"${REPO_URL}\"" >> /etc/sui-bot/sui-bot.env
@@ -278,7 +260,7 @@ systemctl enable --now sui-bot sui-subpage
 
 # ------------------------------------------------------------ 8. nginx
 if [[ ${SKIP_NGINX:-0} != 1 ]]; then
-  say "nginx — پورت 2096 (مرورگر→UI+منو / اپ→فید خام)"
+  say "nginx — port 2096 (browser→UI+menu / VPN apps→raw feed)"
   command -v nginx >/dev/null || { apt-get update -qq; apt-get install -y -qq nginx; }
   sed -e "s/__DOMAIN__/${WEB_DOMAIN}/g" \
       -e "s#__CERT__#${CERT}#g" \
@@ -290,57 +272,56 @@ if [[ ${SKIP_NGINX:-0} != 1 ]]; then
 fi
 
 # ------------------------------------------------------------ 9. verify
-say "راستی‌آزمایی نهایی"
+say "Final verification"
 sleep 6
 fail=0
 chk() { if eval "$2"; then echo "   ✔ $1"; else echo "   ✗ $1"; fail=1; fi; }
-chk "sui-bot فعال"        "[[ $(systemctl is-active sui-bot) == active ]]"
-chk "sui-subpage فعال"    "[[ $(systemctl is-active sui-subpage) == active ]]"
-chk "استارت خودکار بعد ریبوت (sui-bot)"     "systemctl is-enabled sui-bot | grep -q enabled"
-chk "استارت خودکار بعد ریبوت (sui-subpage)" "systemctl is-enabled sui-subpage | grep -q enabled"
-chk "nginx فعال"          "systemctl is-active nginx"
-chk "API پنل با توکن"     "curl -sk --max-time 8 --resolve '${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1' -H 'Token: ${SUI_TOKEN_VAL}' 'https://${WEB_DOMAIN}:${WEB_PORT}/app/apiv2/clients' | grep -q '\"success\":true'"
-chk "منوی وب 2096"        "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:2096/sub/menu' | grep -q 200"
-chk "UI مرورگر 2096"      "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:2096/sub/test' | grep -q 200"
-chk "فید اپ 2096"         "curl -sk -o /dev/null -w '%{http_code}' -A 'v2rayNG' 'https://127.0.0.1:2096/sub/test' | grep -qE '200|404'"
-echo
+chk "sui-bot active"        "[[ $(systemctl is-active sui-bot) == active ]]"
+chk "sui-subpage active"    "[[ $(systemctl is-active sui-subpage) == active ]]"
+chk "auto-start on reboot (sui-bot)"     "systemctl is-enabled sui-bot | grep -q enabled"
+chk "auto-start on reboot (sui-subpage)" "systemctl is-enabled sui-subpage | grep -q enabled"
+chk "nginx active"          "systemctl is-active nginx"
+chk "panel API via token"   "curl -sk --max-time 8 --resolve '${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1' -H 'Token: ${SUI_TOKEN_VAL}' 'https://${WEB_DOMAIN}:${WEB_PORT}/app/apiv2/clients' | grep -q '\"success\":true'"
+chk "web menu 2096"         "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:2096/sub/menu' | grep -q 200"
+chk "browser UI 2096"       "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:2096/sub/test' | grep -q 200"
+chk "app feed 2096"         "curl -sk -o /dev/null -w '%{http_code}' -A 'v2rayNG' 'https://127.0.0.1:2096/sub/test' | grep -qE '200|404'"
+
 if [[ $fail -eq 0 ]]; then
-  echo -e "\033[1;32m★★★ همه‌چیز نصب و سالم است ★★★\033[0m"
+  echo -e "\033[1;32m★★★ ALL CHECKS PASSED — INSTALL COMPLETE ★★★\033[0m"
 else
-  echo -e "\033[1;33mنصب تمام شد ولی بعضی تست‌ها پاس نشد — لاگ: $LOG\033[0m"
+  echo -e "\033[1;33mInstall finished but some checks failed — see log: $LOG\033[0m"
 fi
 
-# ------------------------------------------------------------ راهنمای اجرا
+# ------------------------------------------------------------ guide
 echo
-echo "════════════════════════ 📖 راهنمای اجرا ════════════════════════"
+echo "════════════════════════ 📖 HOW TO RUN ════════════════════════"
 echo
-echo "  ▶️  اجرا چطور کار می‌کند؟"
-echo "     هیچی لازم نیست اجرا کنی — ربات به‌صورت سرویس systemd بلند شده،"
-echo "     همین حالا جواب /start را در تلگرام می‌دهد و بعد از هر ریبوت سرور"
-echo "     هم خودکار بالا می‌آید (Restart=always)."
+echo "  ▶  Nothing to run manually — the bot is already running as a"
+echo "     systemd service and auto-starts on every server reboot."
 echo
-echo "  🤖 داخل ربات تلگرام (ادمین):"
-echo "     /panel       داشبورد مدیریت (کاربران، سرور، بکاپ)"
-echo "     /shop        فروشگاه (پلن‌ها از تنظیمات پنل: پلن‌ها/قیمت‌گذاری)"
-echo "     /discounts   ساخت کد تخفیف"
-echo "     /wallet      کیف پول کاربران"
-echo "     /trial       تست رایگان ۵۰۰MB/۱روز"
-echo "     /diag        تست سلامت پنل"
+echo "  🤖 Inside the Telegram bot (as admin):"
+echo "     /panel       admin dashboard (users, server, backups)"
+echo "     /shop        shop (plans: admin settings → Plans/Pricing)"
+echo "     /discounts   create promo/discount codes"
+echo "     /wallet      user wallet"
+echo "     /trial       free trial 500MB / 1 day"
+echo "     /diag        panel health check"
 echo
-echo "  🖥️  روی سرور (دستورهای مدیریتی):"
-echo "     sui-bot            وضعیت همه‌چیز (توکن‌ها ماسک‌شده)"
-echo "     sui-bot logs       لاگ زندهٔ ربات"
-echo "     sui-bot restart    ری‌استارت سرویس‌ها"
-echo "     sui-bot menu       تست صفحهٔ منوی وب (دکمهٔ مربع تلگرام)"
-echo "     sui-bot config     ویرایش توکن‌ها/تنظیمات (nano) + ری‌استارت"
-echo "     sui-bot update     ⬆️ آپدیت از گیت‌هاب (داده‌ها حفظ می‌شوند)"
-echo "     sui-bot uninstall  حذف کامل (با بکاپ خودکار)"
+echo "  🖥️  On the server (management commands):"
+echo "     sui-bot            full status (tokens masked)"
+echo "     sui-bot logs       live bot logs"
+echo "     sui-bot restart    restart services"
+echo "     sui-bot menu       test the web menu page"
+echo "     sui-bot config     edit tokens/settings (nano) + restart"
+echo "     sui-bot update     ⬆ update from GitHub (keeps all data)"
+echo "     sui-bot uninstall  full removal (auto-backup included)"
 echo
-echo "  📁 مسیرهای مهم:"
-echo "     تنظیمات و توکن‌ها : /etc/sui-bot/sui-bot.env"
-echo "     داده‌ها           : /var/lib/sui-bot  (سفارش، کیف پول، تخفیف، بکاپ)"
-echo "     کد نصب‌شده        : /opt/sui-bot-v2 (+ سورس در /opt/sui-bot-v2-src)"
-echo "     لاگ سیستم         : journalctl -u sui-bot -n 50"
+echo "  📁 Important paths:"
+echo "     config & tokens : /etc/sui-bot/sui-bot.env"
+echo "     data            : /var/lib/sui-bot  (orders, wallet, promos, backups)"
+echo "     code            : /opt/sui-bot-v2 (+ source in /opt/sui-bot-v2-src)"
+echo "     system logs     : journalctl -u sui-bot -n 50"
 echo
-echo "  📱 دکمهٔ مربع کنار کادر تایپ تلگرام → منوی اصلی گرافیکی"
+echo "  📱 The square menu button next to the message box in Telegram"
+echo "     opens the graphical main menu."
 echo "═════════════════════════════════════════════════════════════════"
