@@ -23,6 +23,24 @@ die() { echo -e "\033[1;31m!! $*\033[0m"; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "با root اجرا کن (sudo -i)"
 
+# ------------------------------------------------------------ 0. پاکسازی نسخه‌های قبلی
+say "پاکسازی نسخه‌های قدیمی (v1/v2 قبلی)"
+# سرویس‌های قدیمی هر مسیری که بودند
+for old_svc in $(systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}' | grep -E '^(sui-bot|sui-subpage)\.service' || true); do
+  systemctl stop "$old_svc" 2>/dev/null || true
+  systemctl disable "$old_svc" 2>/dev/null || true
+  echo "   سرویس قدیمی متوقف شد: $old_svc"
+done
+# نصب pip قدیمی در هر venv
+for old_venv in /opt/sui-bot/.venv /opt/sui-bot-v2/.venv; do
+  [[ -x $old_venv/bin/pip ]] && { "$old_venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true; echo "   پکیج قدیمی حذف شد: $old_venv"; }
+done
+# فایل‌های قدیمی — داده‌ها (/var/lib/sui-bot و /etc/sui-bot) دست‌نخورده می‌مانند
+rm -rf /opt/sui-bot /opt/sui-bot-v2 /opt/sui-bot-v2-src.old
+rm -f /etc/systemd/system/sui-bot.service /etc/systemd/system/sui-subpage.service
+systemctl daemon-reload
+echo "   ✔ آمادهٔ نصب تمیز (داده‌ها و تنظیمات حفظ شدند)"
+
 # ------------------------------------------------------------ 0. منبع کد
 REPO_URL="${REPO_URL:-}"
 if [[ -z $REPO_URL ]]; then
