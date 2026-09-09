@@ -18,6 +18,10 @@ ENV_FILE=/etc/sui-bot/sui-bot.env
 
 cmd=${1:-status}
 
+# خواندن مقدار از env (توکن‌ها ماسک می‌شوند)
+g() { [[ -f $ENV_FILE ]] && grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"'; }
+m() { local v=$1; [[ ${#v} -gt 10 ]] && echo "${v:0:4}...${v: -4}" || echo "$v"; }
+
 case $cmd in
   status)
     echo "════════════════ SUI BOT — وضعیت ════════════════"
@@ -28,17 +32,14 @@ case $cmd in
       echo -e "  $svc  $mark  (استارت خودکار: $en)"
     done
     echo
-    # خواندن اطلاعات نمایشی از env (توکن‌ها ماسک می‌شوند)
     if [[ -f $ENV_FILE ]]; then
-      g() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"'; }
-      m() { local v=$1; [[ ${#v} -gt 10 ]] && echo "${v:0:4}...${v: -4}" || echo "$v"; }
       echo "  ساب/دامنه  : $(g SUB_BASE_URL_OVERRIDE)"
       echo "  ربات       : $(g BOT_DISPLAY_NAME)"
+      echo "  بات یوزر   : @$(g BOT_USERNAME)"
       echo "  BOT_TOKEN  : $(m "$(g BOT_TOKEN)")"
       echo "  SUI_TOKEN  : $(m "$(g SUI_TOKEN)")"
       echo "  ادمین اصلی : $(g ADMIN_TELEGRAM_ID)"
-      domain=$(g SUB_BASE_URL_OVERRIDE | sed 's#^https://##; s#:2096.*/sub.*##')
-      echo "  منوی وب    : https://${domain}:2096/sub/menu"
+      echo "  منوی وب    : $(g MENU_WEBAPP_URL)"
     fi
     echo "═════════════════════════════════════════════════"
     echo "  دستورها: start | stop | restart | logs | update | config | menu | uninstall"
@@ -68,9 +69,8 @@ case $cmd in
     ;;
 
   menu)
-    domain=$(g SUB_BASE_URL_OVERRIDE 2>/dev/null | sed 's#^https://##; s#:2096.*/sub.*##')
-    [[ -n $domain ]] || domain=$(grep -E '^SUI_HOST=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' | sed 's#https://##; s#/app.*##')
-    url="https://${domain}:2096/sub/menu"
+    url=$(g MENU_WEBAPP_URL)
+    [[ -n $url ]] || { echo "MENU_WEBAPP_URL در env خالی است — sui-bot-update یا install.sh را اجرا کن"; exit 1; }
     echo "تست: $url"
     code=$(curl -sk -o /tmp/menu_test.html -w '%{http_code}' -A "Mozilla/5.0" "$url")
     if [[ $code == 200 ]] && grep -q "telegram-web-app.js" /tmp/menu_test.html; then

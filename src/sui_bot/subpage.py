@@ -68,6 +68,32 @@ SUBPAGE_TITLE = os.getenv("SUBPAGE_TITLE", "اشتراک Vpnfiy")
 CACHE_TTL = float(os.getenv("SUBPAGE_CACHE_TTL", "10"))
 _cache: dict[str, tuple[float, dict | None]] = {}
 
+# لینک عمیق کارت‌های منو: یوزرنیم بات از env یا getMe با BOT_TOKEN
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").lstrip("@")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+_bot_link_cache: tuple[str, float] = ("", 0.0)
+
+
+async def _bot_link() -> str:
+    global _bot_link_cache
+    link, expires = _bot_link_cache
+    if expires > time.time():
+        return link
+    uname = BOT_USERNAME
+    if not uname and BOT_TOKEN:
+        try:
+            timeout = aiohttp.ClientTimeout(total=8)
+            async with aiohttp.ClientSession(timeout=timeout) as sess:
+                async with sess.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe") as resp:
+                    data = await resp.json(content_type=None)
+                    if data.get("ok"):
+                        uname = str(data["result"].get("username") or "").lstrip("@")
+        except Exception as exc:
+            logger.warning("getMe failed (menu cards fall back to sendData): %s", exc)
+    link = f"https://t.me/{uname}" if uname else ""
+    _bot_link_cache = (link, time.time() + (86400 if BOT_USERNAME else 300))
+    return link
+
 
 def _fmt_gb(num_bytes: int | float | None) -> str:
     if num_bytes is None:
@@ -486,7 +512,7 @@ MENU_PAGE = """<!doctype html>
     border:1px solid #223354; border-radius:16px;
     padding:16px 10px; text-align:center; cursor:pointer;
     transition:transform .08s ease, border-color .15s ease;
-    user-select:none;
+    user-select:none; display:block; text-decoration:none; color:inherit;
   }
   .card:active { transform:scale(.96); border-color:#3b82f6; }
   .card.wide { grid-column:1 / -1; }
@@ -499,35 +525,47 @@ MENU_PAGE = """<!doctype html>
   <h1>__TITLE__</h1>
   <div class="sub">منوی اصلی — هر گزینه را بزنید تا داخل ربات باز شود</div>
   <div class="grid">
-    <div class="card wide"   data-act="shop"><span class="ico">🛍️</span><span class="lbl">خرید اشتراک</span></div>
-    <div class="card"        data-act="usage"><span class="ico">📊</span><span class="lbl">اشتراک‌های من</span></div>
-    <div class="card"        data-act="wallet"><span class="ico">💼</span><span class="lbl">کیف پول</span></div>
-    <div class="card"        data-act="trial"><span class="ico">🎁</span><span class="lbl">تست رایگان</span></div>
-    <div class="card"        data-act="support"><span class="ico">🆘</span><span class="lbl">پشتیبانی</span></div>
+    <a class="card wide" data-act="shop"    href="__BOT_LINK__?start=shop"><span class="ico">🛍️</span><span class="lbl">خرید اشتراک</span></a>
+    <a class="card"      data-act="usage"   href="__BOT_LINK__?start=usage"><span class="ico">📊</span><span class="lbl">اشتراک‌های من</span></a>
+    <a class="card"      data-act="wallet"  href="__BOT_LINK__?start=wallet"><span class="ico">💼</span><span class="lbl">کیف پول</span></a>
+    <a class="card"      data-act="trial"   href="__BOT_LINK__?start=trial"><span class="ico">🎁</span><span class="lbl">تست رایگان</span></a>
+    <a class="card"      data-act="support" href="__BOT_LINK__?start=support"><span class="ico">🆘</span><span class="lbl">پشتیبانی</span></a>
   </div>
   <div class="hint">اگر دکمه‌ها کار نکردند، ربات را باز کنید و /start بزنید</div>
 <script>
   const tg = window.Telegram.WebApp;
   tg.ready();
   tg.expand();
-  document.querySelectorAll(".card").forEach(card => {
-    card.addEventListener("click", () => {
-      try {
-        tg.sendData(JSON.stringify({ act: card.dataset.act }));
-      } catch (e) { console.error(e); }
-    });
-  });
+__EXTRA_JS__
 </script>
 </body>
 </html>"""
 
 
-def _menu_page() -> str:
-    return MENU_PAGE.replace("__TITLE__", html.escape(SUBPAGE_TITLE))
+_SEND_DATA_JS = """
+  // بدون یوزرنیم بات → کارت‌ها با sendData کار می‌کنند (هندلر web_app_data ربات)
+  document.querySelectorAll(".card").forEach(card => {
+    card.addEventListener("click", e => {
+      e.preventDefault();
+      try { tg.sendData(JSON.stringify({ act: card.dataset.act })); } catch (err) { console.error(err); }
+    });
+  });
+"""
+
+
+def _menu_page(bot_link: str = "") -> str:
+    page = MENU_PAGE.replace("__TITLE__", html.escape(SUBPAGE_TITLE))
+    if bot_link:
+        page = page.replace("__BOT_LINK__", bot_link)
+        page = page.replace("__EXTRA_JS__", "")
+    else:
+        page = page.replace("__BOT_LINK__", "#")
+        page = page.replace("__EXTRA_JS__", _SEND_DATA_JS)
+    return page
 
 
 async def handle_menu(request: web.Request) -> web.Response:
-    return web.Response(text=_menu_page(), content_type="text/html")
+    return web.Response(text=_menu_page(await _bot_link()), content_type="text/html")
 
 
 def make_app() -> web.Application:

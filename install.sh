@@ -192,6 +192,15 @@ _upsert "STORE_ENABLED"         "true"
 _upsert "DATA_DIR"              "/var/lib/sui-bot"
 _upsert "SUBPAGE_PORT"          "8099"
 _upsert "SUBPAGE_BIND"          "127.0.0.1"
+# BOT_USERNAME — لینک deep-link کارت‌های منوی وب (از طریق getMe)
+BOT_UNAME=$(curl -fsS --max-time 10 "https://api.telegram.org/bot${BOT_TOKEN_VAL}/getMe" 2>/dev/null \
+            | python3 -c 'import json,sys;print(json.load(sys.stdin).get("result",{}).get("username",""))' 2>/dev/null || true)
+if [[ -n $BOT_UNAME ]]; then
+  _upsert "BOT_USERNAME" "$BOT_UNAME"
+  echo "   BOT_USERNAME → ${BOT_UNAME}"
+else
+  warn "could not fetch bot username (getMe) — set BOT_USERNAME in /etc/sui-bot/sui-bot.env manually"
+fi
 SUI_TOKEN_VAL=$(grep -E '^SUI_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
 echo "   SUI_HOST → https://${WEB_DOMAIN}:${WEB_PORT}/app"
 
@@ -281,17 +290,23 @@ systemctl enable --now sui-bot sui-subpage
 
 # ------------------------------------------------------------ 8. web UI (menu + sub pages)
 # NOTE: the s-ui panel and its own ports (2095/2096/2097...) are NEVER touched.
-# Our web UI (browser sub pages + Telegram menu mini-app) listens on its own
-# free port — default 8443, override with WEB_UI_PORT=xxxx before install.
+# Telegram opens WebApp/menu-button URLs ONLY on ports 443/80/88/8443 — the web
+# UI must live on one of them or the square button does nothing.
+# Override with WEB_UI_PORT=xxxx (must be one of the four) before install.
 if [[ ${SKIP_NGINX:-0} != 1 ]]; then
   say "Web UI (browser sub pages + Telegram menu) on its own port"
-  WEB_UI_PORT="${WEB_UI_PORT:-44307}"
-  # اگر پورت انتخابی اشغال بود، بین پورت‌های ۵ رقمی آزاد بگرد
-  for cand in 44307 44308 45307 46307 47307; do
-    if ! ss -ltn 2>/dev/null | grep -q ":${cand} "; then
-      WEB_UI_PORT=$cand; break
-    fi
-  done
+  WEB_UI_PORT="${WEB_UI_PORT:-8443}"
+  if [[ ! $WEB_UI_PORT =~ ^(443|80|88|8443)$ ]]; then
+    warn "WEB_UI_PORT=$WEB_UI_PORT is not Telegram-supported (443/80/88/8443) — falling back to 8443"
+    WEB_UI_PORT=8443
+  fi
+  if ss -ltn 2>/dev/null | grep -q ":${WEB_UI_PORT} "; then
+    for cand in 8443 443 88 80; do
+      if ! ss -ltn 2>/dev/null | grep -q ":${cand} "; then
+        WEB_UI_PORT=$cand; break
+      fi
+    done
+  fi
   echo "   web UI port: ${WEB_UI_PORT}"
 
   command -v nginx >/dev/null || { apt-get update -qq; apt-get install -y -qq nginx; }
@@ -331,6 +346,7 @@ chk "panel API via token"   "curl -sk --max-time 8 --resolve '${WEB_DOMAIN}:${WE
 chk "web menu (UI :${WEB_UI_PORT})"   "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:${WEB_UI_PORT}/sub/menu' | grep -q 200"
 chk "browser UI (UI :${WEB_UI_PORT})" "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:${WEB_UI_PORT}/sub/test' | grep -q 200"
 chk "app feed (UI :${WEB_UI_PORT})"   "curl -sk -o /dev/null -w '%{http_code}' -A 'v2rayNG' 'https://127.0.0.1:${WEB_UI_PORT}/sub/test' | grep -qE '200|404'"
+chk "bot username (@$(grep -E '^BOT_USERNAME=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"'))" "grep -qE '^BOT_USERNAME=\"@?[A-Za-z0-9_]{5,}\"?$' /etc/sui-bot/sui-bot.env"
 
 if [[ $fail -eq 0 ]]; then
   echo -e "\033[1;32m★★★ ALL CHECKS PASSED — INSTALL COMPLETE ★★★\033[0m"

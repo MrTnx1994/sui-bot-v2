@@ -18,6 +18,12 @@ set -euo pipefail
 say() { echo -e "\n\033[1;36m==> $*\033[0m"; }
 die() { echo -e "\033[1;31m!! $*\033[0m"; exit 1; }
 
+_upsert_env() {  # _upsert_env KEY VALUE — در /etc/sui-bot/sui-bot.env
+  grep -q "^$1=" /etc/sui-bot/sui-bot.env \
+    && sed -i "s#^$1=.*#$1=\"$2\"#" /etc/sui-bot/sui-bot.env \
+    || echo "$1=\"$2\"" >> /etc/sui-bot/sui-bot.env
+}
+
 [[ $EUID -eq 0 ]] || die "با root اجرا کن (sudo -i)"
 
 APP_DIR=/opt/sui-bot-v2
@@ -103,16 +109,25 @@ if [[ -n $CUR_DOMAIN && -f $CUR_CERT && -f $CUR_KEY && -f $SRC_DIR/nginx/sub-ui.
       -e "s#__CERTKEY__#${CUR_KEY}#g" \
       "$SRC_DIR/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
   nginx -t && systemctl reload nginx
-  _upsert_env() {
-    grep -q "^$1=" /etc/sui-bot/sui-bot.env \
-      && sed -i "s#^$1=.*#$1=\"$2\"#" /etc/sui-bot/sui-bot.env \
-      || echo "$1=\"$2\"" >> /etc/sui-bot/sui-bot.env
-  }
   _upsert_env "MENU_WEBAPP_URL"      "https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
   _upsert_env "SUB_BASE_URL_OVERRIDE" "https://${CUR_DOMAIN}:${CUR_PORT}/sub"
   echo "   ✔ nginx + MENU هم‌گام شد → https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
 else
   echo "   (کانفیگ nginx فعلی کامل نیست — بدون تغییر ماند؛ install.sh را دوباره اجرا کن)"
+fi
+
+# ------------------------------------------------------------ 3.3 BOT_USERNAME برای کارت‌های منو
+say "ساخت BOT_USERNAME (لینک deep-link کارت‌های منو)"
+BOT_TOKEN_VAL=$(grep -E '^BOT_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
+if [[ -n $BOT_TOKEN_VAL && $BOT_TOKEN_VAL != "replace-me" ]]; then
+  BOT_UNAME=$(curl -fsS --max-time 10 "https://api.telegram.org/bot${BOT_TOKEN_VAL}/getMe" 2>/dev/null \
+              | python3 -c 'import json,sys;print(json.load(sys.stdin).get("result",{}).get("username",""))' 2>/dev/null || true)
+  if [[ -n $BOT_UNAME ]]; then
+    _upsert_env "BOT_USERNAME" "$BOT_UNAME"
+    echo "   ✔ BOT_USERNAME → ${BOT_UNAME}"
+  else
+    echo "   ⚠ getMe جواب نداد — کارت‌های منو روی sendData می‌افتند (کار می‌کنند ولی با تاخیر)"
+  fi
 fi
 
 # ------------------------------------------------------------ 3.2 یکدست‌سازی زبان
@@ -139,6 +154,8 @@ fail=0
 chk() { if eval "$2"; then echo "   ✔ $1"; else echo "   ✗ $1"; fail=1; fi; }
 chk "sui-bot فعال"     "[[ $(systemctl is-active sui-bot) == active ]]"
 chk "sui-subpage فعال" "[[ $(systemctl is-active sui-subpage) == active ]]"
+MENU_URL_VAL=$(grep -E '^MENU_WEBAPP_URL=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' || true)
+[[ -n $MENU_URL_VAL ]] && chk "صفحهٔ منوی وب" "curl -fsk --max-time 8 -A 'Mozilla/5.0' '$MENU_URL_VAL' | grep -q telegram-web-app.js"
 
 NEW_VER=$("$VENV_PY" -c 'import sui_bot; print(getattr(sui_bot,"__version__","?"))' 2>/dev/null || echo "?")
 echo

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import json
 import os
 import tempfile
@@ -1337,9 +1337,9 @@ def create_inbounds_keyboard(selected_inbounds=None, prefix="inbound"):
 
     # Add control buttons
     keyboard.extend([
-        [InlineKeyboardButton("✅ All Inbounds", callback_data=f'{prefix}_all')],
-        [InlineKeyboardButton("✔️ Confirm Selection", callback_data=f'{prefix}_done')],
-        [InlineKeyboardButton("❌ Abort", callback_data=f'{prefix}_cancel')]
+        [InlineKeyboardButton("✅ همه اینبان‌ها", callback_data=f'{prefix}_all')],
+        [InlineKeyboardButton("✔️ تأیید انتخاب", callback_data=f'{prefix}_done')],
+        [InlineKeyboardButton("❌ انصراف", callback_data=f'{prefix}_cancel')]
     ])
 
     return keyboard
@@ -1678,7 +1678,7 @@ def build_payment_settings_keyboard():
 def build_admin_tools_settings_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(tr(ADMIN_TELEGRAM_ID, "set_display_name"), callback_data='settings_set_display_name')],
-        [InlineKeyboardButton("🕐 Set Administrative Timezone", callback_data='settings_timezone')],
+        [InlineKeyboardButton("🕐 تنظیم منطقه زمانی", callback_data='settings_timezone')],
         [InlineKeyboardButton(tr(ADMIN_TELEGRAM_ID, "connection_guides_title"), callback_data='settings_connection_guides')],
         [InlineKeyboardButton(
             tr(
@@ -1691,9 +1691,9 @@ def build_admin_tools_settings_keyboard():
             tr(ADMIN_TELEGRAM_ID, "disable_web_panel" if WEB_PANEL_ENABLED else "enable_web_panel"),
             callback_data='settings_web_panel',
         )],
-        [InlineKeyboardButton("💾 Backup & Restore", callback_data='settings_backup_restore')],
+        [InlineKeyboardButton("💾 بکاپ و بازگردانی", callback_data='settings_backup_restore')],
         [InlineKeyboardButton("👥 مدیران", callback_data='settings_admins')],
-        [InlineKeyboardButton("🔙 Back To Settings", callback_data='admin_settings')],
+        [InlineKeyboardButton("🔙 بازگشت به تنظیمات", callback_data='admin_settings')],
     ])
 
 def build_admins_text() -> str:
@@ -1762,7 +1762,7 @@ def build_admin_add_keyboard() -> InlineKeyboardMarkup:
 def build_backup_restore_keyboard():    return InlineKeyboardMarkup([
         [InlineKeyboardButton("📤 ساخت و ارسال بکاپ", callback_data='settings_backup_create')],
         [InlineKeyboardButton("📥 راهنمای بازگردانی", callback_data='settings_backup_help')],
-        [InlineKeyboardButton("🔙 Back", callback_data='settings_admin_tools')],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data='settings_admin_tools')],
     ])
 
 
@@ -1970,7 +1970,7 @@ def build_settings_plans_keyboard():
     for m in range(1, 13):
         icon = "✅" if m in enabled else "⬜"
         rows.append([InlineKeyboardButton(f"{icon} {m} Month", callback_data=f'settings_plan_toggle_{m}')])
-    rows.append([InlineKeyboardButton("🔙 Back", callback_data='settings_payments')])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data='settings_payments')])
     return InlineKeyboardMarkup(rows)
 
 
@@ -2090,7 +2090,7 @@ async def settings_card_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             "💳 Enter new card number.\n"
             "You can send digits with or without dashes.\n\n"
             "Cancel: /cancel",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='settings_payments')]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data='settings_payments')]])
         )
         return SETTINGS_CARD_NUMBER
 
@@ -2112,7 +2112,7 @@ async def settings_card_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             "👤 Enter new card holder name.\n"
             "Use `-` to clear holder name.\n\n"
             "Cancel: /cancel",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='settings_payments')]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data='settings_payments')]])
         )
         return SETTINGS_CARD_HOLDER
 
@@ -2508,10 +2508,10 @@ def get_pagination_keyboard(current_page: int, total_pages: int, prefix: str):
     keyboard = []
     nav_row = []
     if current_page > 1:
-        nav_row.append(InlineKeyboardButton("◀️ Previous", callback_data=f'{prefix}_page_{current_page-1}'))
+        nav_row.append(InlineKeyboardButton("◀️ قبلی", callback_data=f'{prefix}_page_{current_page-1}'))
     nav_row.append(InlineKeyboardButton(f"📄 {current_page}/{total_pages}", callback_data='current_page'))
     if current_page < total_pages:
-        nav_row.append(InlineKeyboardButton("Next ▶️", callback_data=f'{prefix}_page_{current_page+1}'))
+        nav_row.append(InlineKeyboardButton("بعدی ▶️", callback_data=f'{prefix}_page_{current_page+1}'))
     keyboard.append(nav_row)
     keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')])
     return InlineKeyboardMarkup(keyboard)
@@ -2621,13 +2621,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 logging.getLogger("sui_bot.reseller").exception("referral capture failed")
     if language_store.get(user_id) is None:
-        # تشخیص خودکار زبان از کلاینت تلگرام؛ fa/ru/zh شناخته می‌شوند، بقیه انگلیسی
-        tg_lang = (update.effective_user.language_code or "en")[:2]
-        auto = tg_lang if tg_lang in SUPPORTED_LANGUAGES else "en"
-        if auto != "en":
-            await asyncio.to_thread(language_store.set, user_id, auto)
-        else:
-            await update.message.reply_text(translate("en", "choose_language"), reply_markup=language_keyboard())
+        # فارسی پیش‌فرضِ همه — بدون سوال زبان (کاربر بعداً می‌تواند از دکمهٔ 🌐 عوض کند)
+        pass
+    # deep-link کارت‌های منوی وب: /start shop|usage|wallet|trial|support
+    if context.args:
+        act = str(context.args[0]).strip().lower()
+        if act in MENU_DEEP_ACTIONS and await _open_menu_action(update, context, act):
             return
     admin_flag = is_admin(user_id)
     await _remove_stale_home_keyboard(update, user_id)
@@ -2747,6 +2746,37 @@ async def deploy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _shop_command(update, context)
 
 
+MENU_DEEP_ACTIONS = {"shop", "usage", "wallet", "trial", "support"}
+
+
+async def _open_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> bool:
+    """اجرای اکشن منو از هر منبع (deep-link کارت‌ها یا sendData). True = اجرا شد."""
+    store_on = SETTINGS.store_enabled
+    message = update.effective_message
+    if action in ("shop", "buy", "plans") and store_on:
+        from .store_bot import shop_command as _shop_command
+        await _shop_command(update, context)
+        return True
+    if action in ("wallet", "balance") and store_on:
+        from .store_bot import wallet_command as _wallet_command
+        await _wallet_command(update, context)
+        return True
+    if action == "trial" and store_on:
+        from .store_bot import trial_command as _trial_command
+        await _trial_command(update, context)
+        return True
+    if action in ("usage", "my_usage", "subscriptions"):
+        await usage(update, context)
+        return True
+    if action == "support":
+        context.user_data["support_pending"] = True
+        await message.reply_text(
+            "✍️ پیامت رو بنویس و بفرست (یا /cancel بزن برای انصراف):"
+        )
+        return True
+    return False
+
+
 @rate_limited(admin_only=False)
 async def webapp_menu_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دیتای ارسالی از مینی‌اپ منو (دکمهٔ مربعی کنار کادر تایپ).
@@ -2765,40 +2795,7 @@ async def webapp_menu_data_handler(update: Update, context: ContextTypes.DEFAULT
     except Exception:
         action = raw
 
-    action_map = {
-        "shop": "shop",
-        "buy": "shop",
-        "plans": "shop",
-        "usage": "usage",
-        "my_usage": "usage",
-        "subscriptions": "usage",
-        "wallet": "wallet",
-        "balance": "wallet",
-        "trial": "trial",
-        "support": "support",
-    }
-    action = action_map.get(action, "")
-
-    if action == "shop" and SETTINGS.store_enabled:
-        from .store_bot import shop_command as _shop_command
-        await _shop_command(update, context)
-        return
-    if action == "wallet" and SETTINGS.store_enabled:
-        from .store_bot import wallet_command as _wallet_command
-        await _wallet_command(update, context)
-        return
-    if action == "trial" and SETTINGS.store_enabled:
-        from .store_bot import trial_command as _trial_command
-        await _trial_command(update, context)
-        return
-    if action == "usage":
-        await usage(update, context)
-        return
-    if action == "support":
-        context.user_data["support_pending"] = True
-        await message.reply_text(
-            "✍️ پیامت رو بنویس و بفرست (یا /cancel بزن برای انصراف):"
-        )
+    if await _open_menu_action(update, context, action):
         return
     await message.reply_text("📍 از منوی اصلی ربات استفاده کن: /start")
 
@@ -3031,7 +3028,7 @@ async def diag_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     report = format_diag_report(rows)
     if api_client.last_errors:
         report += f"\n\n⚠️ Recorded failures:{api_client.error_reason()}"
-    keyboard = [[InlineKeyboardButton("🔄 Re-run", callback_data='diag_rerun')]]
+    keyboard = [[InlineKeyboardButton("🔄 اجرای مجدد", callback_data='diag_rerun')]]
     await update.message.reply_text(report, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -3048,7 +3045,7 @@ async def diag_rerun_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             report += f"\n\n⚠️ Recorded failures:{api_client.error_reason()}"
         await query.edit_message_text(
             report,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Re-run", callback_data='diag_rerun')]]),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 اجرای مجدد", callback_data='diag_rerun')]]),
         )
     except BadRequest as exc:
         if "message is not modified" not in str(exc).lower():
@@ -3468,7 +3465,7 @@ async def assign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"⚠️ Client ID {client_id} already assigned to Telegram ID {tg_id}")
 
-        keyboard = [[InlineKeyboardButton("🔗 View Links", callback_data='manage_links')],
+        keyboard = [[InlineKeyboardButton("🔗 مشاهده لینک‌ها", callback_data='manage_links')],
                    [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
         await update.message.reply_text("Choose an option:", reply_markup=InlineKeyboardMarkup(keyboard))
     except ValueError:
@@ -3542,7 +3539,7 @@ async def show_interactive_assignment_clients(query, page: int = 1) -> None:
     if page < total_pages:
         navigation.append(InlineKeyboardButton("▶️", callback_data=f'assign_page_{page + 1}'))
     rows.append(navigation)
-    rows.append([InlineKeyboardButton("🔙 Back", callback_data='add_link_help')])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data='add_link_help')])
     message = (
         "👤 Interactive Assignment\n\nChoose an unassigned S-UI client, then Telegram will open its native user picker."
         if available else
@@ -3573,8 +3570,8 @@ async def interactive_assign_user_shared(update: Update, context: ContextTypes.D
         f"Telegram: {preserve_dynamic_text(pending['telegram_label'])} (ID: {pending['telegram_id']})\n\n"
         "The person must start the bot before it can send them messages.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Confirm", callback_data='assign_confirm')],
-            [InlineKeyboardButton("❌ Cancel", callback_data='assign_abort')],
+            [InlineKeyboardButton("✅ تأیید", callback_data='assign_confirm')],
+            [InlineKeyboardButton("❌ انصراف", callback_data='assign_abort')],
         ]),
     )
 
@@ -3697,8 +3694,8 @@ async def create_user_inbound_callback(update: Update, context: ContextTypes.DEF
             await localized_query_answer(query, "❌ Must At Least Select 1 Inbound.", show_alert=True)
             return CREATE_USER_INBOUNDS
         keyboard = [
-            [InlineKeyboardButton("♾️ Unlimited", callback_data='volume_unlimited')],
-            [InlineKeyboardButton("❌ Abort", callback_data='create_cancel')]
+            [InlineKeyboardButton("♾️ نامحدود", callback_data='volume_unlimited')],
+            [InlineKeyboardButton("❌ انصراف", callback_data='create_cancel')]
         ]
         selected_names = [get_inbound_display_name(i) for i in context.user_data['selected_inbounds']]
         await query.edit_message_text(
@@ -3740,8 +3737,8 @@ async def create_user_volume(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if query.data == 'volume_unlimited':
             context.user_data['new_client_volume'] = 0
             keyboard = [
-                [InlineKeyboardButton("♾️ Unlimited", callback_data='expiry_unlimited')],
-                [InlineKeyboardButton("❌ Abort", callback_data='create_cancel')]
+                [InlineKeyboardButton("♾️ نامحدود", callback_data='expiry_unlimited')],
+                [InlineKeyboardButton("❌ انصراف", callback_data='create_cancel')]
             ]
             await query.edit_message_text(
                 "✅ Volume: Unlimited\n\n"
@@ -3762,8 +3759,8 @@ async def create_user_volume(update: Update, context: ContextTypes.DEFAULT_TYPE)
             volume_bytes = int(volume_gb * 1024 * 1024 * 1024)
             context.user_data['new_client_volume'] = volume_bytes
             keyboard = [
-                [InlineKeyboardButton("♾️ Unlimited", callback_data='expiry_unlimited')],
-                [InlineKeyboardButton("❌ Abort", callback_data='create_cancel')]
+                [InlineKeyboardButton("♾️ نامحدود", callback_data='expiry_unlimited')],
+                [InlineKeyboardButton("❌ انصراف", callback_data='create_cancel')]
             ]
             await update.message.reply_text(
                 f"✅ Volume: {volume_gb} GB\n\n"
@@ -3914,7 +3911,7 @@ def lifecycle_keyboard(prefix: str, include_keep: bool = False, user_id: int | N
         [InlineKeyboardButton(tr(uid, "lifecycle_delayed"), callback_data=f'{prefix}_lifecycle_delayed_expiry')],
         [InlineKeyboardButton(tr(uid, "lifecycle_reset_now"), callback_data=f'{prefix}_lifecycle_reset_now')],
         [InlineKeyboardButton(tr(uid, "lifecycle_reset_first"), callback_data=f'{prefix}_lifecycle_reset_first')],
-        [InlineKeyboardButton("❌ Abort", callback_data=f'{prefix}_cancel')],
+        [InlineKeyboardButton("❌ انصراف", callback_data=f'{prefix}_cancel')],
     ])
     return InlineKeyboardMarkup(rows)
 
@@ -4243,8 +4240,8 @@ async def edit_user_inbound_callback(update: Update, context: ContextTypes.DEFAU
         current_volume_gb = current_volume_bytes / (1024 * 1024 * 1024) if current_volume_bytes > 0 else "Unlimited"
 
         keyboard = [
-            [InlineKeyboardButton("♾️ Unlimited", callback_data='edit_volume_unlimited')],
-            [InlineKeyboardButton("❌ Abort", callback_data='edit_cancel')]
+            [InlineKeyboardButton("♾️ نامحدود", callback_data='edit_volume_unlimited')],
+            [InlineKeyboardButton("❌ انصراف", callback_data='edit_cancel')]
         ]
         selected_names = [get_inbound_display_name(i) for i in context.user_data['edited_selected_inbounds']]
         await query.edit_message_text(
@@ -4293,8 +4290,8 @@ async def edit_user_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_expiry_str = "Unlimited" if current_expiry_ts == 0 else calculate_remaining_time(current_expiry_ts).replace(' Days', '')
 
             keyboard = [
-                [InlineKeyboardButton("♾️ Unlimited", callback_data='edit_expiry_unlimited')],
-                [InlineKeyboardButton("❌ Abort", callback_data='edit_cancel')]
+                [InlineKeyboardButton("♾️ نامحدود", callback_data='edit_expiry_unlimited')],
+                [InlineKeyboardButton("❌ انصراف", callback_data='edit_cancel')]
             ]
             await query.edit_message_text(
                 "✅ Volume: Unlimited\n\n"
@@ -4326,8 +4323,8 @@ async def edit_user_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_expiry_str = "Unlimited" if current_expiry_ts == 0 else calculate_remaining_time(current_expiry_ts).replace(' Days', '')
 
         keyboard = [
-            [InlineKeyboardButton("♾️ Unlimited", callback_data='edit_expiry_unlimited')],
-            [InlineKeyboardButton("❌ Abort", callback_data='edit_cancel')]
+            [InlineKeyboardButton("♾️ نامحدود", callback_data='edit_expiry_unlimited')],
+            [InlineKeyboardButton("❌ انصراف", callback_data='edit_cancel')]
         ]
         await update.message.reply_text(
             f"✅ Volume: {format_bytes(context.user_data['edited_client_volume'])}\n\n"
@@ -4544,7 +4541,7 @@ async def prompt_edit_enable(message, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton(f"✅ Enable {'✅' if current_enable_status else ''}", callback_data='edit_enable_true')],
         [InlineKeyboardButton(f"❌ Disable {'✅' if not current_enable_status else ''}", callback_data='edit_enable_false')],
-        [InlineKeyboardButton("❌ Abort", callback_data='edit_cancel')]
+        [InlineKeyboardButton("❌ انصراف", callback_data='edit_cancel')]
     ]
     text = "⚡ Choose Active/Deactive State Of The User:"
     if hasattr(message, 'edit_message_text'):
@@ -4609,9 +4606,9 @@ async def edit_user_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     enable_status = query.data.split('_')[2] == 'true'
     context.user_data['edited_client_enable'] = enable_status
     keyboard = [
-        [InlineKeyboardButton("🔄 Regenerate Secrets", callback_data='edit_regen_true')],
-        [InlineKeyboardButton("🛡️ Keep Existing Secrets", callback_data='edit_regen_false')],
-        [InlineKeyboardButton("❌ Abort", callback_data='edit_cancel')]
+        [InlineKeyboardButton("🔄 ساخت مجدد کلیدها", callback_data='edit_regen_true')],
+        [InlineKeyboardButton("🛡️ حفظ کلیدهای فعلی", callback_data='edit_regen_false')],
+        [InlineKeyboardButton("❌ انصراف", callback_data='edit_cancel')]
     ]
     await query.edit_message_text(
         "🔐 Choose Secrets Policy:\n\n"
@@ -4767,8 +4764,8 @@ async def delete_user_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['client_id_to_delete'] = client_id
     context.user_data['client_name_to_delete'] = client_name
 
-    keyboard = [[InlineKeyboardButton("✅ Yes,Delete It", callback_data='delete_confirm_yes')],
-                [InlineKeyboardButton("❌ No,Abort", callback_data='delete_confirm_no')]]
+    keyboard = [[InlineKeyboardButton("✅ بله، حذف شود", callback_data='delete_confirm_yes')],
+                [InlineKeyboardButton("❌ خیر، انصراف", callback_data='delete_confirm_no')]]
 
     await update.message.reply_text(
         f"⚠️ Are You Sure You Want To Delete User '{client_name}' (Client ID: {client_id}) ? This Action Can't Be Undone.",
@@ -5016,7 +5013,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )]
                 for key, (_, label) in ADMIN_TIMEZONES.items()
             ]
-            rows.append([InlineKeyboardButton("🔙 Back", callback_data='settings_admin_tools')])
+            rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data='settings_admin_tools')])
             await query.edit_message_text(
                 "🕐 Administrative Timezone\n\nCreated and last-online timestamps will use this timezone.",
                 reply_markup=InlineKeyboardMarkup(rows),
@@ -6138,7 +6135,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         request_name=True,
                         request_username=True,
                     ),
-                )], [KeyboardButton("❌ Cancel Interactive Assignment")]],
+                )], [KeyboardButton("❌ انصراف از اختصاص")]],
                 resize_keyboard=True,
                 one_time_keyboard=True,
             )
@@ -6174,15 +6171,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 result_text,
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ Assign Another", callback_data='assign_interactive')],
-                    [InlineKeyboardButton("🔗 View Links", callback_data='manage_links')],
+                    [InlineKeyboardButton("➕ اختصاص بعدی", callback_data='assign_interactive')],
+                    [InlineKeyboardButton("🔗 مشاهده لینک‌ها", callback_data='manage_links')],
                 ]),
             )
         elif data == 'assign_abort':
             context.user_data.pop('pending_interactive_assignment', None)
             await query.edit_message_text(
                 "❌ Interactive assignment canceled.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data='add_link_help')]]),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data='add_link_help')]]),
             )
         elif data == 'add_link_help':
             if not is_admin(user_id):
@@ -6224,8 +6221,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += "✅ All Users Are Linked."
 
             keyboard = [
-                [InlineKeyboardButton("👤 Interactive Assignment", callback_data='assign_interactive')],
-                [InlineKeyboardButton("🔙 Return To List", callback_data='manage_links')],
+                [InlineKeyboardButton("👤 اختصاص تعاملی", callback_data='assign_interactive')],
+                [InlineKeyboardButton("🔙 بازگشت به لیست", callback_data='manage_links')],
                 [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
             ]
 
@@ -6270,8 +6267,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             keyboard = [
-                [InlineKeyboardButton("📢 All Users", callback_data='broadcast_all')],
-                [InlineKeyboardButton("📨 Specific Users", callback_data='broadcast_specific')],
+                [InlineKeyboardButton("📢 همه کاربران", callback_data='broadcast_all')],
+                [InlineKeyboardButton("📨 کاربران انتخابی", callback_data='broadcast_specific')],
                 [InlineKeyboardButton("🔙 بازگشت", callback_data='main_menu')]
             ]
 
@@ -6521,7 +6518,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             keyboard = [
                 [InlineKeyboardButton("🔄 بروزرسانی", callback_data='check_inactive_users')],
-                [InlineKeyboardButton("🔗 Links", callback_data='manage_links')],
+                [InlineKeyboardButton("🔗 لینک‌ها", callback_data='manage_links')],
                 [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
             ]
 
@@ -6561,8 +6558,8 @@ async def broadcast_message_handler(update: Update, context: ContextTypes.DEFAUL
     context.user_data['broadcast_message'] = message_text
 
     keyboard = [
-        [InlineKeyboardButton("✅ Yes,Send", callback_data='broadcast_execute')],
-        [InlineKeyboardButton("❌ No,Abort", callback_data='broadcast_cancel')]
+        [InlineKeyboardButton("✅ بله، ارسال شود", callback_data='broadcast_execute')],
+        [InlineKeyboardButton("❌ خیر، انصراف", callback_data='broadcast_cancel')]
     ]
 
     await update.message.reply_text(
@@ -6816,7 +6813,7 @@ async def renew_receipt_handler(update: Update, context: ContextTypes.DEFAULT_TY
 @rate_limited(admin_only=True)
 async def check_inactive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manual command to check inactive users"""
-    keyboard = [[InlineKeyboardButton("🔍 Check Inactive Users", callback_data='check_inactive_users')]]
+    keyboard = [[InlineKeyboardButton("🔍 بررسی کاربران غیرفعال", callback_data='check_inactive_users')]]
     await update.message.reply_text(
         "To Check Inactive Users Click The Button Below:",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -7183,8 +7180,8 @@ async def send_expiration_notification(app, expired_users):
 
         # Add action buttons
         keyboard = [
-            [InlineKeyboardButton("👥 All Clients", callback_data='all_clients_page_1')],
-            [InlineKeyboardButton("📝 Edit Users", callback_data='edit_user_prompt')],
+            [InlineKeyboardButton("👥 همه کلاینت‌ها", callback_data='all_clients_page_1')],
+            [InlineKeyboardButton("📝 ویرایش کاربران", callback_data='edit_user_prompt')],
             [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
         ]
 
@@ -7431,19 +7428,19 @@ async def show_links_page(query, page: int = 1):
     # Pagination buttons
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f'links_page_{page-1}'))
+        nav_buttons.append(InlineKeyboardButton("◀️ قبلی", callback_data=f'links_page_{page-1}'))
 
     nav_buttons.append(InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data='current_page'))
 
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f'links_page_{page+1}'))
+        nav_buttons.append(InlineKeyboardButton("بعدی ▶️", callback_data=f'links_page_{page+1}'))
 
     if nav_buttons:
         keyboard.append(nav_buttons)
 
     # Action buttons
     keyboard.extend([
-        [InlineKeyboardButton("➕ Add New Link", callback_data='add_link_help')],
+        [InlineKeyboardButton("➕ افزودن لینک جدید", callback_data='add_link_help')],
         [InlineKeyboardButton("🔄 بروزرسانی", callback_data='manage_links')],
         [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
     ])
@@ -7521,17 +7518,17 @@ async def show_broadcast_users_page(query, context, page: int = 1):
 
     # If no users found
     if total_users == 0:
-        keyboard.append([InlineKeyboardButton("➕ Add User", callback_data='add_link_help')])
+        keyboard.append([InlineKeyboardButton("➕ افزودن کاربر", callback_data='add_link_help')])
 
     # Add pagination buttons if needed
     pagination_row = []
     if page > 1:
-        pagination_row.append(InlineKeyboardButton("◀️ Previous", callback_data=f'broadcast_page_{page-1}'))
+        pagination_row.append(InlineKeyboardButton("◀️ قبلی", callback_data=f'broadcast_page_{page-1}'))
 
     pagination_row.append(InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data='current_page'))
 
     if page < total_pages:
-        pagination_row.append(InlineKeyboardButton("Next ▶️", callback_data=f'broadcast_page_{page+1}'))
+        pagination_row.append(InlineKeyboardButton("بعدی ▶️", callback_data=f'broadcast_page_{page+1}'))
 
     if pagination_row:
         keyboard.append(pagination_row)
@@ -7540,8 +7537,8 @@ async def show_broadcast_users_page(query, context, page: int = 1):
     selection_count = len(selected_user_keys)
     keyboard.extend([
         [InlineKeyboardButton(f"📋 Selected: {selection_count} User", callback_data='broadcast_selection_summary')],
-        [InlineKeyboardButton("✅ Confirm Selection", callback_data='broadcast_confirm_selection')],
-        [InlineKeyboardButton("🗑️ Clear Selection", callback_data='broadcast_clear_selection')],
+        [InlineKeyboardButton("✅ تأیید انتخاب", callback_data='broadcast_confirm_selection')],
+        [InlineKeyboardButton("🗑️ پاک کردن انتخاب", callback_data='broadcast_clear_selection')],
         [InlineKeyboardButton("🔙 بازگشت", callback_data='broadcast_message')]
     ])
 
@@ -7607,8 +7604,8 @@ async def broadcast_selection_summary_callback(update: Update, context: ContextT
 
     current_page = context.user_data.get('broadcast_page', 1)
     keyboard = [
-    [InlineKeyboardButton("🔙 Return To List", callback_data=f'broadcast_page_{current_page}')],
-    [InlineKeyboardButton("✅ Continue To Send", callback_data='broadcast_confirm_selection')]
+    [InlineKeyboardButton("🔙 بازگشت به لیست", callback_data=f'broadcast_page_{current_page}')],
+    [InlineKeyboardButton("✅ ادامه و ارسال", callback_data='broadcast_confirm_selection')]
     ]
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -7908,7 +7905,7 @@ async def main():
     # دیتای مینی‌اپ منو (دکمهٔ مربعی کنار کادر تایپ) → باز کردن بخش مربوطه در ربات
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_menu_data_handler), group=2)
     app.add_handler(MessageHandler(
-        filters.Regex(r'^❌ Cancel Interactive Assignment$'), interactive_assign_cancel
+        filters.Regex(r'^❌ انصراف از اختصاص$'), interactive_assign_cancel
     ))
     app.add_handler(MessageHandler((filters.PHOTO | filters.Document.ALL) & ~filters.COMMAND, renew_receipt_handler))
     # shop_* به shop_callback می‌رسد (ثبت بعدی)؛ بقیه به این هندلر
