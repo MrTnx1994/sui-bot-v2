@@ -290,18 +290,19 @@ systemctl enable --now sui-bot sui-subpage
 
 # ------------------------------------------------------------ 8. web UI (menu + sub pages)
 # NOTE: the s-ui panel and its own ports (2095/2096/2097...) are NEVER touched.
-# Telegram opens WebApp/menu-button URLs ONLY on ports 443/80/88/8443 — the web
+# Telegram opens WebApp/menu-button URLs ONLY on ports 443/80/88 — the web
 # UI must live on one of them or the square button does nothing.
-# Override with WEB_UI_PORT=xxxx (must be one of the four) before install.
+# (8443 is excluded: on this stack it belongs to the s-ui panel.)
+# Override with WEB_UI_PORT=xxxx (must be one of the three) before install.
 if [[ ${SKIP_NGINX:-0} != 1 ]]; then
   say "Web UI (browser sub pages + Telegram menu) on its own port"
-  WEB_UI_PORT="${WEB_UI_PORT:-8443}"
-  if [[ ! $WEB_UI_PORT =~ ^(443|80|88|8443)$ ]]; then
-    warn "WEB_UI_PORT=$WEB_UI_PORT is not Telegram-supported (443/80/88/8443) — falling back to 8443"
-    WEB_UI_PORT=8443
+  WEB_UI_PORT="${WEB_UI_PORT:-88}"
+  if [[ ! $WEB_UI_PORT =~ ^(443|80|88)$ ]]; then
+    warn "WEB_UI_PORT=$WEB_UI_PORT is not Telegram-supported (443/80/88) — falling back to 88"
+    WEB_UI_PORT=88
   fi
   if ss -ltn 2>/dev/null | grep -q ":${WEB_UI_PORT} "; then
-    for cand in 8443 443 88 80; do
+    for cand in 88 443 80; do
       if ! ss -ltn 2>/dev/null | grep -q ":${cand} "; then
         WEB_UI_PORT=$cand; break
       fi

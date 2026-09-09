@@ -93,11 +93,11 @@ CUR_DOMAIN=$(grep -oPm1 'server_name\s+\K[^;]+' /etc/nginx/sites-available/sub-u
 CUR_CERT=$(grep -oPm1 'ssl_certificate\s+\K[^;]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
 CUR_KEY=$(grep -oPm1 'ssl_certificate_key\s+\K[^;]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
 CUR_PORT=$(grep -oPm1 'listen\s+\K[0-9]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
-CUR_PORT=${CUR_PORT:-8443}
-# مهاجرت: تلگرام مینی‌اپ را فقط روی 443/80/88/8443 باز می‌کند.
-# هر پورت دیگر (2096 پنل، 44307 قدیمی، …) → اولین پورت مجازِ آزاد
-if [[ ! $CUR_PORT =~ ^(443|80|88|8443)$ ]]; then
-  for cand in 8443 443 88 80; do
+CUR_PORT=${CUR_PORT:-88}
+# مهاجرت: تلگرام مینی‌اپ را فقط روی 443/80/88 باز می‌کند (8443 روی این سرور
+# در اشغال پنل s-ui است). هر پورت دیگر → اولین پورت مجازِ آزاد: 88
+if [[ ! $CUR_PORT =~ ^(443|80|88)$ ]]; then
+  for cand in 88 443 80; do
     if ! ss -ltn 2>/dev/null | grep -q ":${cand} "; then
       CUR_PORT=$cand; break
     fi
