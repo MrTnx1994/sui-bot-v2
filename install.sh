@@ -282,14 +282,53 @@ systemctl enable --now sui-bot sui-subpage
 # ------------------------------------------------------------ 8. nginx
 if [[ ${SKIP_NGINX:-0} != 1 ]]; then
   say "nginx — port 2096 (browser→UI+menu / VPN apps→raw feed)"
+
+  # s-ui's own subscription service must NOT own 2096 — nginx needs it.
+  # If s-ui sub is bound to 2096, move the panel's subPort to 2097.
+  if command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q ':2096 '; then
+    owner=$(ss -ltnp 2>/dev/null | grep ':2096 ' | grep -oP 'users:\(\("\K[^"]+' | head -1 || true)
+    echo "   port 2096 is used by: ${owner:-unknown}"
+    if [[ $owner == s-ui* ]]; then
+      say "s-ui sub occupies 2096 → moving panel subPort to 2097 (nginx takes 2096)"
+      systemctl stop s-ui 2>/dev/null || true
+      python3 - "$SUI_DB" << 'PY'
+import sqlite3, sys
+n = sqlite3.connect(sys.argv[1], timeout=15)
+if n.execute("SELECT 1 FROM settings WHERE key='subPort'").fetchone():
+    n.execute("UPDATE settings SET value='2097' WHERE key='subPort'")
+else:
+    n.execute("INSERT INTO settings(key,value) VALUES ('subPort','2097')")
+n.commit()
+print("   panel subPort → 2097")
+PY
+      SUB_PORT=2097
+      systemctl start s-ui 2>/dev/null || true
+      sleep 3
+    fi
+  fi
+
+  # sub backend scheme: https only if the panel sub service has its own cert+key
+  SUB_SCHEME=$(python3 - "$SUI_DB" << 'PY'
+import sqlite3, sys, os
+n = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+g = lambda k: (n.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone() or ('',))[0] or ''
+key, cert = g('subKeyFile'), g('subCertFile')
+print('https' if key and cert and os.path.exists(key) and os.path.exists(cert) else 'http')
+PY
+)
+  echo "   sub backend: ${SUB_SCHEME}://127.0.0.1:${SUB_PORT}"
+
   command -v nginx >/dev/null || { apt-get update -qq; apt-get install -y -qq nginx; }
   sed -e "s/__DOMAIN__/${WEB_DOMAIN}/g" \
       -e "s#__CERT__#${CERT}#g" \
       -e "s#__CERTKEY__#${CERTKEY}#g" \
+      -e "s#https://127.0.0.1:2097#${SUB_SCHEME}://127.0.0.1:${SUB_PORT}#g" \
       "$HERE/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
   ln -sf /etc/nginx/sites-available/sub-ui /etc/nginx/sites-enabled/sub-ui
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx
+  sleep 1
+  ss -ltn 2>/dev/null | grep -q ':2096 ' && echo "   ✔ nginx is listening on 2096" || warn "nothing is listening on 2096 yet"
 fi
 
 # ------------------------------------------------------------ 9. verify
