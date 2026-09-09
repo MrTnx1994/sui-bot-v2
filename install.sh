@@ -174,9 +174,26 @@ set_env_value "PAYMENT_CARD_HOLDER"  "Card holder name"
 set_env_value "ZARINPAL_MERCHANT_ID" "ZarinPal merchant code (optional — Enter = card-to-card only)"
 chmod 600 /etc/sui-bot/sui-bot.env
 
-BOT_TOKEN_VAL=$(grep -E '^BOT_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"')
+BOT_TOKEN_VAL=$(grep -E '^BOT_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs)
 [[ -n $BOT_TOKEN_VAL && $BOT_TOKEN_VAL != "replace-me" ]] \
   || die "BOT_TOKEN is empty — the bot cannot start; run the installer again."
+
+# --- rewrite server-derived values (sample placeholders must not survive) ---
+sed -i "s#^SUI_HOST=.*#SUI_HOST=\"https://${WEB_DOMAIN}:${WEB_PORT}/app\"#" /etc/sui-bot/sui-bot.env
+_upsert() {  # _upsert KEY VALUE
+  grep -q "^$1=" /etc/sui-bot/sui-bot.env \
+    && sed -i "s#^$1=.*#$1=\"$2\"#" /etc/sui-bot/sui-bot.env \
+    || echo "$1=\"$2\"" >> /etc/sui-bot/sui-bot.env
+}
+_upsert "SUB_BASE_URL_OVERRIDE" "https://${WEB_DOMAIN}:2096/sub"
+_upsert "MENU_WEBAPP_URL"       "https://${WEB_DOMAIN}:2096/sub/menu"
+_upsert "STORE_ENABLED"         "true"
+_upsert "DATA_DIR"              "/var/lib/sui-bot"
+_upsert "SUBPAGE_PORT"          "8099"
+_upsert "SUBPAGE_BIND"          "127.0.0.1"
+SUI_TOKEN_VAL=$(grep -E '^SUI_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
+echo "   SUI_HOST → https://${WEB_DOMAIN}:${WEB_PORT}/app"
+echo "   MENU     → https://${WEB_DOMAIN}:2096/sub/menu"
 
 # ------------------------------------------------------------ 3. panel API token compatibility
 say "Ensuring API token exists inside the panel DB"
