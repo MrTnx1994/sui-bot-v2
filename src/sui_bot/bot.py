@@ -2588,6 +2588,17 @@ async def setup_bot_commands(app) -> None:
     try:
         menu_url = getattr(SETTINGS, "menu_webapp_url", "") or ""
         if menu_url:
+            from urllib.parse import urlsplit
+            try:
+                _port = urlsplit(menu_url).port or 443
+            except ValueError:
+                _port = -1
+            if _port not in (443, 80, 88, 8443):
+                logger.warning(
+                    "Telegram mini apps only open from ports 443/80/88/8443 — "
+                    "MENU_WEBAPP_URL uses :%s and the square button will likely do nothing. "
+                    "Run sui-bot-update to migrate nginx to :8443.", _port,
+                )
             await app.bot.set_chat_menu_button(
                 menu_button=MenuButtonWebApp(text="منو", web_app=WebAppInfo(url=menu_url))
             )
