@@ -490,78 +490,39 @@ async def handle_health(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 # مینی‌اپ منوی اصلی — دکمهٔ مربعی کنار کادر تایپ تلگرام این صفحه را باز می‌کند
 # ---------------------------------------------------------------------------
+# صفحهٔ دکمهٔ مربعی تلگرام — پرش‌صفحهٔ آنی: به‌محض باز شدن، «menu» را به ربات
+# می‌فرستد (باز/بسته کردن منو در چت) و خودش را می‌بندد. کاربر صفحه نمی‌بیند.
+# ---------------------------------------------------------------------------
 MENU_PAGE = """<!doctype html>
 <html dir="rtl" lang="fa">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <title>__TITLE__</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body {
-    font-family: "Vazirmatn", Tahoma, sans-serif;
-    background: linear-gradient(160deg, #0b1220 0%, #101a2e 55%, #0d1526 100%);
-    color:#e6edf7; min-height:100vh; padding:18px 14px 28px;
-  }
-  h1 { text-align:center; font-size:20px; margin:6px 0 2px; }
-  .sub { text-align:center; color:#8fa3bd; font-size:12.5px; margin-bottom:16px; }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; max-width:420px; margin:0 auto; }
-  .card {
-    background:linear-gradient(145deg,#16233c,#131f36);
-    border:1px solid #223354; border-radius:16px;
-    padding:16px 10px; text-align:center; cursor:pointer;
-    transition:transform .08s ease, border-color .15s ease;
-    user-select:none; display:block; text-decoration:none; color:inherit;
-  }
-  .card:active { transform:scale(.96); border-color:#3b82f6; }
-  .card.wide { grid-column:1 / -1; }
-  .ico { font-size:30px; display:block; margin-bottom:8px; }
-  .lbl { font-size:14px; font-weight:600; }
-  .hint { text-align:center; color:#64748b; font-size:11px; margin-top:18px; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#0b1220; color:#e6edf7; font-family:"Vazirmatn",Tahoma,sans-serif; }
+  .box { text-align:center; }
+  .ico { font-size:44px; margin-bottom:10px; }
 </style>
 </head>
 <body>
-  <h1>__TITLE__</h1>
-  <div class="sub">منوی اصلی — هر گزینه را بزنید تا داخل ربات باز شود</div>
-  <div class="grid">
-    <a class="card wide" data-act="shop"    href="__BOT_LINK__?start=shop"><span class="ico">🛍️</span><span class="lbl">خرید اشتراک</span></a>
-    <a class="card"      data-act="usage"   href="__BOT_LINK__?start=usage"><span class="ico">📊</span><span class="lbl">اشتراک‌های من</span></a>
-    <a class="card"      data-act="wallet"  href="__BOT_LINK__?start=wallet"><span class="ico">💼</span><span class="lbl">کیف پول</span></a>
-    <a class="card"      data-act="trial"   href="__BOT_LINK__?start=trial"><span class="ico">🎁</span><span class="lbl">تست رایگان</span></a>
-    <a class="card"      data-act="support" href="__BOT_LINK__?start=support"><span class="ico">🆘</span><span class="lbl">پشتیبانی</span></a>
-  </div>
-  <div class="hint">اگر دکمه‌ها کار نکردند، ربات را باز کنید و /start بزنید</div>
+  <div class="box"><div class="ico">⬜</div><div>در حال باز کردن منو…</div></div>
 <script>
   const tg = window.Telegram.WebApp;
   tg.ready();
-  tg.expand();
-__EXTRA_JS__
+  try { tg.sendData('menu'); } catch (e) { location.href = '__FALLBACK_LINK__'; }
+  setTimeout(function () { try { tg.close(); } catch (e) {} }, 400);
 </script>
 </body>
 </html>"""
 
 
-_SEND_DATA_JS = """
-  // بدون یوزرنیم بات → کارت‌ها با sendData کار می‌کنند (هندلر web_app_data ربات)
-  document.querySelectorAll(".card").forEach(card => {
-    card.addEventListener("click", e => {
-      e.preventDefault();
-      try { tg.sendData(JSON.stringify({ act: card.dataset.act })); } catch (err) { console.error(err); }
-    });
-  });
-"""
-
-
 def _menu_page(bot_link: str = "") -> str:
     page = MENU_PAGE.replace("__TITLE__", html.escape(SUBPAGE_TITLE))
-    if bot_link:
-        page = page.replace("__BOT_LINK__", bot_link)
-        page = page.replace("__EXTRA_JS__", "")
-    else:
-        page = page.replace("__BOT_LINK__", "#")
-        page = page.replace("__EXTRA_JS__", _SEND_DATA_JS)
-    return page
+    fallback = f"{bot_link}?start=menu" if bot_link else "#"
+    return page.replace("__FALLBACK_LINK__", fallback)
 
 
 async def handle_menu(request: web.Request) -> web.Response:

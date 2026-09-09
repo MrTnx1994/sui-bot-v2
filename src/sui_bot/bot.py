@@ -32,6 +32,8 @@ from telegram import (
     KeyboardButton,
     KeyboardButtonRequestUsers,
     MenuButtonCommands,
+    MenuButtonWebApp,
+    WebAppInfo,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
@@ -2609,8 +2611,16 @@ async def setup_bot_commands(app) -> None:
                 await app.bot.set_my_commands(_admin_commands, scope=BotCommandScopeChat(admin_id))
             except TelegramError:
                 logger.warning("Could not register admin commands for %s", admin_id)
-        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-        logger.info("Telegram command menu registered; square button = native command list (no webapp)")
+        menu_url = getattr(SETTINGS, "menu_webapp_url", "") or ""
+        if menu_url:
+            await app.bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(text="منو", web_app=WebAppInfo(url=menu_url))
+            )
+            logger.info("Square button = one-tap menu open/close via %s", menu_url)
+        else:
+            await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+            logger.info("Square button set to native command list")
+        logger.info("Telegram command menu registered")
     except TelegramError as exc:
         logger.warning("Could not register bot commands: %s", exc)
 
@@ -2753,13 +2763,24 @@ async def deploy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _shop_command(update, context)
 
 
-MENU_DEEP_ACTIONS = {"shop", "usage", "wallet", "trial", "support"}
+MENU_DEEP_ACTIONS = {"menu", "shop", "usage", "wallet", "trial", "support"}
 
 
 async def _open_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> bool:
     """اجرای اکشن منو از هر منبع (deep-link کارت‌ها یا sendData). True = اجرا شد."""
     store_on = SETTINGS.store_enabled
     message = update.effective_message
+    if action in ("menu", "toggle", "main_menu"):
+        user_id = update.effective_user.id
+        if context.chat_data.get("menu_message_id"):
+            await close_menu_message(update, context)
+        else:
+            await _remove_stale_home_keyboard(update, user_id)
+            await open_menu_message(
+                update, context, tr(user_id, "welcome"),
+                get_main_menu_keyboard(is_admin(user_id), user_id),
+            )
+        return True
     if action in ("shop", "buy", "plans") and store_on:
         from .store_bot import shop_command as _shop_command
         await _shop_command(update, context)

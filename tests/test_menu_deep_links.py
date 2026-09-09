@@ -21,27 +21,33 @@ def _subpage_module(monkeypatch):
 
 
 class TestMenuPage:
-    def test_deep_link_cards(self, monkeypatch):
+    """صفحهٔ دکمهٔ مربعی = پرش آنی: sendData('menu') و بستن خود، بدون کارت."""
+
+    def test_splash_opens_menu_via_send_data(self, monkeypatch):
         sp = _subpage_module(monkeypatch)
         page = sp._menu_page("https://t.me/TestBot")
-        assert 'href="https://t.me/TestBot?start=shop"' in page
-        assert "tg.sendData" not in page
-        for token in ("__BOT_LINK__", "__EXTRA_JS__", "__TITLE__"):
-            assert token not in page
+        assert "tg.sendData('menu')" in page
+        assert "tg.close()" in page
+        assert "https://t.me/TestBot?start=menu" in page
+        assert "__TITLE__" not in page and "__FALLBACK_LINK__" not in page
 
-    def test_fallback_send_data_cards(self, monkeypatch):
+    def test_splash_without_bot_link_keeps_send_data(self, monkeypatch):
         sp = _subpage_module(monkeypatch)
         page = sp._menu_page("")
-        assert 'href="#?start=shop"' in page
-        assert "tg.sendData" in page
-        assert "__BOT_LINK__" not in page and "__EXTRA_JS__" not in page
+        assert "tg.sendData('menu')" in page
+        assert "location.href = '#'" in page
+        assert "__FALLBACK_LINK__" not in page
 
-    def test_all_actions_covered(self, monkeypatch):
-        sp = _subpage_module(monkeypatch)
-        page = sp._menu_page("https://t.me/TestBot")
-        for act in ("shop", "usage", "wallet", "trial", "support"):
-            assert f"?start={act}" in page, act
-            assert f'data-act="{act}"' in page, act
+
+class TestBotActionsSurface:
+    def test_actions_present_in_bot(self):
+        text = (SRC / "sui_bot" / "bot.py").read_text(encoding="utf-8")
+        for act in ("menu", "shop", "usage", "wallet", "trial", "support"):
+            assert f'"{act}"' in text, act
+        assert "_shop_command" in text
+        assert "_wallet_command" in text
+        assert "_trial_command" in text
+        assert "await usage(" in text
 
 
 class TestBotRoutingSurface:
