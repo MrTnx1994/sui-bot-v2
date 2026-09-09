@@ -341,6 +341,30 @@ PY
   else
     warn "nginx did not take 2096 — check: ss -ltnp | grep 2096"
   fi
+
+  # WebApp menu button works best on the standard 443 port — some Telegram
+  # clients refuse to deep-open webapp URLs on custom ports.
+  MENU_URL="https://${WEB_DOMAIN}:2096/sub/menu"
+  if ! ss -ltn 2>/dev/null | grep -q ':443 '; then
+    sed -i "s#    listen 2096 ssl;#    listen 2096 ssl;\n    listen 443 ssl;#" /etc/nginx/sites-available/sub-ui
+    if nginx -t 2>/dev/null && systemctl reload nginx && ss -ltn 2>/dev/null | grep -q ':443 '; then
+      MENU_URL="https://${WEB_DOMAIN}/sub/menu"
+      echo "   ✔ also serving on standard port 443 → menu button uses it"
+    else
+      cp /etc/nginx/sites-available/sub-ui "${HERE}/sub-ui.conf.bak443" 2>/dev/null || true
+      git -C "$HERE" checkout -q -- . 2>/dev/null || true
+      # revert: rebuild config without 443
+      sed -e "s/__DOMAIN__/${WEB_DOMAIN}/g" \
+          -e "s#__CERT__#${CERT}#g" \
+          -e "s#__CERTKEY__#${CERTKEY}#g" \
+          -e "s#https://127.0.0.1:2097#${SUB_SCHEME}://127.0.0.1:${SUB_PORT}#g" \
+          "$HERE/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
+      nginx -t && systemctl reload nginx
+      echo "   (443 unavailable — menu button stays on 2096)"
+    fi
+  fi
+  _upsert "MENU_WEBAPP_URL" "$MENU_URL"
+  echo "   MENU     → $MENU_URL"
 fi
 
 # ------------------------------------------------------------ 9. verify
