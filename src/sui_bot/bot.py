@@ -26,6 +26,7 @@ import psutil
 from telegram import (
     Update,
     BotCommandScopeChat,
+    BotCommandScopeDefault,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
