@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  sui-bot — دستور مدیریتی یکجا
+#
+#    sui-bot              ← وضعیت (پیش‌فرض)
+#    sui-bot status       ← وضعیت سرویس‌ها
+#    sui-bot start|stop|restart|logs|journal
+#    sui-bot update       ← آپدیت از گیت‌هاب
+#    sui-bot config       ← ویرایش توکن‌ها/تنظیمات (nano)
+#    sui-bot menu         ← تست صفحهٔ منوی وب
+#    sui-bot uninstall    ← حذف کامل
+# ============================================================================
+set -uo pipefail
+
+SVC1=sui-bot
+SVC2=sui-subpage
+ENV_FILE=/etc/sui-bot/sui-bot.env
+
+cmd=${1:-status}
+
+case $cmd in
+  status)
+    echo "════════════════ SUI BOT — وضعیت ════════════════"
+    for svc in $SVC1 $SVC2; do
+      st=$(systemctl is-active $svc 2>/dev/null)
+      en=$(systemctl is-enabled $svc 2>/dev/null)
+      [[ $st == active ]] && mark="\033[1;32m● فعال\033[0m" || mark="\033[1;31m● غیرفعال\033[0m"
+      echo -e "  $svc  $mark  (استارت خودکار: $en)"
+    done
+    echo
+    # خواندن اطلاعات نمایشی از env (توکن‌ها ماسک می‌شوند)
+    if [[ -f $ENV_FILE ]]; then
+      g() { grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"'; }
+      m() { local v=$1; [[ ${#v} -gt 10 ]] && echo "${v:0:4}...${v: -4}" || echo "$v"; }
+      echo "  ساب/دامنه  : $(g SUB_BASE_URL_OVERRIDE)"
+      echo "  ربات       : $(g BOT_DISPLAY_NAME)"
+      echo "  BOT_TOKEN  : $(m "$(g BOT_TOKEN)")"
+      echo "  SUI_TOKEN  : $(m "$(g SUI_TOKEN)")"
+      echo "  ادمین اصلی : $(g ADMIN_TELEGRAM_ID)"
+      domain=$(g SUB_BASE_URL_OVERRIDE | sed 's#^https://##; s#:2096.*/sub.*##')
+      echo "  منوی وب    : https://${domain}:2096/sub/menu"
+    fi
+    echo "═════════════════════════════════════════════════"
+    echo "  دستورها: start | stop | restart | logs | update | config | menu | uninstall"
+    ;;
+
+  start|stop|restart)
+    systemctl $cmd $SVC1 $SVC2
+    echo "✔ $cmd انجام شد"; systemctl --no-pager --lines=0 status $SVC1 | head -3
+    ;;
+
+  logs|journal)
+    echo "── لاگ زندهٔ $SVC1 (خروج با Ctrl+C) ──"
+    journalctl -u $SVC1 -f -n 40 --no-pager
+    ;;
+
+  update)
+    /usr/local/bin/sui-bot-update
+    ;;
+
+  config)
+    [[ -f $ENV_FILE ]] || { echo "فایل env نیست: $ENV_FILE"; exit 1; }
+    echo "── ویرایش تنظیمات — بعد از ذخیره، سرویس‌ها ری‌استارت می‌شوند ──"
+    nano "$ENV_FILE"
+    read -r -p "ری‌استارت سرویس‌ها؟ (Y/n) " ans
+    [[ $ans == n || $ans == N ]] || systemctl restart $SVC1 $SVC2
+    echo "✔ تمام"
+    ;;
+
+  menu)
+    domain=$(g SUB_BASE_URL_OVERRIDE 2>/dev/null | sed 's#^https://##; s#:2096.*/sub.*##')
+    [[ -n $domain ]] || domain=$(grep -E '^SUI_HOST=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"' | sed 's#https://##; s#/app.*##')
+    url="https://${domain}:2096/sub/menu"
+    echo "تست: $url"
+    code=$(curl -sk -o /tmp/menu_test.html -w '%{http_code}' -A "Mozilla/5.0" "$url")
+    if [[ $code == 200 ]] && grep -q "telegram-web-app.js" /tmp/menu_test.html; then
+      echo "✔ منو سالم است — دکمهٔ مربع تلگرام باید صفحهٔ منو را باز کند"
+    else
+      echo "✗ پاسخ: HTTP $code — subpage را چک کن: systemctl status $SVC2"
+    fi
+    ;;
+
+  uninstall)
+    /usr/local/bin/sui-bot-uninstall
+    ;;
+
+  *)
+    echo "استفاده: sui-bot [status|start|stop|restart|logs|update|config|menu|uninstall]"
+    ;;
+esac

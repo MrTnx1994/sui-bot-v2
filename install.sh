@@ -35,15 +35,16 @@ fi
 REPO_URL="${REPO_URL:-__DEFAULT_REPO_URL__}"
 [[ $REPO_URL == *"__DEFAULT_REPO_URL__"* ]] && die "REPO_URL را ست کن: REPO_URL=https://github.com/user/repo bash install.sh"
 
-say "دریافت سورس از ${REPO_URL} (branch: ${BRANCH:-main})"
+say "دریافت سورس از ${REPO_URL}"
 rm -rf /opt/sui-bot-v2-src
 mkdir -p /opt/sui-bot-v2-src
 if command -v git >/dev/null; then
-  git clone --depth 1 -b "${BRANCH:-main}" "$REPO_URL" /opt/sui-bot-v2-src 2>/dev/null \
+  # بدون -b → برنچ پیش‌فرضِ خود ریپو clone می‌شود (master/main فرقی نمی‌کند)
+  git clone --depth 1 "$REPO_URL" /opt/sui-bot-v2-src 2>/dev/null \
     || die "clone ناموفق — REPO_URL و دسترسی را چک کن"
 else
   apt-get update -qq && apt-get install -y -qq git ca-certificates
-  git clone --depth 1 -b "${BRANCH:-main}" "$REPO_URL" /opt/sui-bot-v2-src \
+  git clone --depth 1 "$REPO_URL" /opt/sui-bot-v2-src \
     || die "clone ناموفق"
 fi
 HERE=/opt/sui-bot-v2-src
@@ -65,7 +66,8 @@ g = lambda k: (n.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchon
 print(g('webPort') or 2095, g('webDomain') or '', g('webCertFile') or '', g('webKeyFile') or '', g('subPort') or 2097)
 PY
 )
-[[ -n $WEB_DOMAIN ]] || die "webDomain در پنل خالی است — اول در تنظیمات پنل دامنه را ست کن"
+[[ -n $WEB_DOMAIN ]] || read -r -p "❓ دامنهٔ سرور (مثل vpn.example.com): " WEB_DOMAIN
+[[ -n $WEB_DOMAIN ]] || die "دامنه خالی است — اول در تنظیمات پنل دامنه را ست کن یا همین‌جا بده"
 echo "   پنل: https://${WEB_DOMAIN}:${WEB_PORT} | ساب: ${SUB_PORT} | گواهی: ${CERT}"
 
 curl -sk -o /dev/null --max-time 8 --resolve "${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1" \
@@ -88,23 +90,31 @@ else
 fi
 
 # set_env_value KEY "سؤال" [پیش‌فرض]
-#  → اگر مقدار موجود معتبر باشد دست نمی‌زند؛ وگرنه از کاربر می‌پرسد و درج می‌کند
+#  → مقدار فعلی را (ماسک‌شده) نشان می‌دهد؛ Enter = نگه‌داشتن، تایپ = جایگزینی
+mask() {
+  local v=$1
+  if [[ ${#v} -gt 10 ]]; then echo "${v:0:4}...${v: -4}"; else echo "$v"; fi
+}
 set_env_value() {
-  local key=$1 question=$2 default=${3:-} current="" value="" hint=""
+  local key=$1 question=$2 default=${3:-} current="" value="" hint="" secret=${4:-0}
   current=$(grep -E "^${key}=" /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
   if [[ -n $current && $current != "replace-me" && $current != "0000-0000-0000-0000" ]]; then
-    echo "   ${key} ← موجود است (دست نخورد)"
-    return
+    local shown; shown=$(mask "$current")
+    read -r -p "   ${key} فعلی: ${shown}  ← Enter=نگه‌داشتن | مقدار جدید بفرست: " value
+    [[ -z $value ]] && { echo "      (نگه داشته شد)"; return; }
+  else
+    [[ -n $default ]] && hint=" [${default}]"
+    read -r -p "❓ ${question}${hint}: " value || die "ورودی خوانده نشد (ترمینال تعاملی لازم است)"
+    [[ -z $value && -n $default ]] && value="$default"
+    [[ -z $value ]] && { echo "      (خالی گذاشته شد — بعداً با nano /etc/sui-bot/sui-bot.env پر کن)"; return; }
   fi
-  [[ -n $default ]] && hint=" [${default}]"
-  read -r -p "❓ ${question}${hint}: " value || die "ورودی خوانده نشد (نیاز به ترمینال تعاملی)"
-  [[ -z $value && -n $default ]] && value="$default"
   sed -i "/^${key}=/d" /etc/sui-bot/sui-bot.env
   echo "${key}=\"${value}\"" >> /etc/sui-bot/sui-bot.env
+  echo "      ← ثبت شد"
 }
 
 echo "────────────────────────────────────────────────────────"
-echo "  چند مقدار لازم داریم  (Enter خالی = رد شدنِ موارد اختیاری)"
+echo "  اطلاعات اتصال ربات (Enter خالی = نگه‌داشتن مقدار فعلی)"
 echo "────────────────────────────────────────────────────────"
 set_env_value "BOT_TOKEN"            "توکن ربات تلگرام (از @BotFather)"
 set_env_value "SUI_TOKEN"            "توکن API پنل s-ui (پنل → تنظیمات → API Token)"
@@ -205,9 +215,10 @@ echo "   نسخه: $(/opt/sui-bot-v2/.venv/bin/python -c 'import sui_bot; print(
 say "سرویس‌های systemd + دستورهای مدیریتی"
 cp "$HERE/units/sui-bot.service" /etc/systemd/system/
 cp "$HERE/units/sui-subpage.service" /etc/systemd/system/
-# sui-bot-update / sui-bot-uninstall — در دسترس همه‌جا
-install -m 755 "$HERE/update.sh"    /usr/local/bin/sui-bot-update
-install -m 755 "$HERE/uninstall.sh" /usr/local/bin/sui-bot-uninstall
+# sui-bot (مدیریتی) / sui-bot-update / sui-bot-uninstall — در دسترس همه‌جا
+install -m 755 "$HERE/sui-bot"       /usr/local/bin/sui-bot
+install -m 755 "$HERE/update.sh"     /usr/local/bin/sui-bot-update
+install -m 755 "$HERE/uninstall.sh"  /usr/local/bin/sui-bot-uninstall
 # آدرس ریپو را ثبت کن تا sui-bot-update بدون آرگومان کار کند
 grep -q '^SUI_BOT_REPO=' /etc/sui-bot/sui-bot.env \
   && sed -i "s#^SUI_BOT_REPO=.*#SUI_BOT_REPO=\"${REPO_URL}\"#" /etc/sui-bot/sui-bot.env \
@@ -245,11 +256,41 @@ chk "فید اپ 2096"         "curl -sk -o /dev/null -w '%{http_code}' -A 'v2ra
 echo
 if [[ $fail -eq 0 ]]; then
   echo -e "\033[1;32m★★★ همه‌چیز نصب و سالم است ★★★\033[0m"
-  echo "   دکمهٔ مربع تلگرام الان منوی اصلی را باز می‌کند."
-  echo "   دستورهای مدیریتی:"
-  echo "     sui-bot-update      ← آپدیت از گیت‌هاب (فایل‌های اضافی پاک، داده‌ها می‌مانند)"
-  echo "     sui-bot-uninstall   ← حذف کامل (با بکاپ خودکار داده‌ها)"
-  echo "   گزارش کامل: $LOG"
 else
   echo -e "\033[1;33mنصب تمام شد ولی بعضی تست‌ها پاس نشد — لاگ: $LOG\033[0m"
 fi
+
+# ------------------------------------------------------------ راهنمای اجرا
+echo
+echo "════════════════════════ 📖 راهنمای اجرا ════════════════════════"
+echo
+echo "  ▶️  اجرا چطور کار می‌کند؟"
+echo "     هیچی لازم نیست اجرا کنی — ربات به‌صورت سرویس systemd بلند شده،"
+echo "     همین حالا جواب /start را در تلگرام می‌دهد و بعد از هر ریبوت سرور"
+echo "     هم خودکار بالا می‌آید (Restart=always)."
+echo
+echo "  🤖 داخل ربات تلگرام (ادمین):"
+echo "     /panel       داشبورد مدیریت (کاربران، سرور، بکاپ)"
+echo "     /shop        فروشگاه (پلن‌ها از تنظیمات پنل: پلن‌ها/قیمت‌گذاری)"
+echo "     /discounts   ساخت کد تخفیف"
+echo "     /wallet      کیف پول کاربران"
+echo "     /trial       تست رایگان ۵۰۰MB/۱روز"
+echo "     /diag        تست سلامت پنل"
+echo
+echo "  🖥️  روی سرور (دستورهای مدیریتی):"
+echo "     sui-bot            وضعیت همه‌چیز (توکن‌ها ماسک‌شده)"
+echo "     sui-bot logs       لاگ زندهٔ ربات"
+echo "     sui-bot restart    ری‌استارت سرویس‌ها"
+echo "     sui-bot menu       تست صفحهٔ منوی وب (دکمهٔ مربع تلگرام)"
+echo "     sui-bot config     ویرایش توکن‌ها/تنظیمات (nano) + ری‌استارت"
+echo "     sui-bot update     ⬆️ آپدیت از گیت‌هاب (داده‌ها حفظ می‌شوند)"
+echo "     sui-bot uninstall  حذف کامل (با بکاپ خودکار)"
+echo
+echo "  📁 مسیرهای مهم:"
+echo "     تنظیمات و توکن‌ها : /etc/sui-bot/sui-bot.env"
+echo "     داده‌ها           : /var/lib/sui-bot  (سفارش، کیف پول، تخفیف، بکاپ)"
+echo "     کد نصب‌شده        : /opt/sui-bot-v2 (+ سورس در /opt/sui-bot-v2-src)"
+echo "     لاگ سیستم         : journalctl -u sui-bot -n 50"
+echo
+echo "  📱 دکمهٔ مربع کنار کادر تایپ تلگرام → منوی اصلی گرافیکی"
+echo "═════════════════════════════════════════════════════════════════"

@@ -1,2 +1,0 @@
-#!/bin/sh
-exec /opt/sui-bot/.venv/bin/python -m sui_bot.cli "$@"
