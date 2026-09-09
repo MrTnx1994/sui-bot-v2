@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 import tempfile
@@ -585,7 +585,8 @@ def md_escape(value: Any) -> str:
 
 
 def user_language(user_id: int) -> str:
-    return language_store.get(user_id) or "en"
+    # پیش‌فرض فارسی — کاربر می‌تواند از دکمهٔ 🌐 زبان عوض کند
+    return language_store.get(user_id) or "fa"
 
 
 def tr(recipient_id: int, key: str, **values: Any) -> str:
@@ -1391,7 +1392,7 @@ async def refresh_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                f"❌ Couldn't Update Inbounds.\n"
                f"Using Saved Cache.")
 
-    keyboard = [[InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+    keyboard = [[InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 def rate_limited(admin_only=False, track_metrics=True):
@@ -1655,7 +1656,7 @@ def build_settings_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(tr(ADMIN_TELEGRAM_ID, "payments_and_renewal"), callback_data='settings_payments')],
         [InlineKeyboardButton(tr(ADMIN_TELEGRAM_ID, "administration"), callback_data='settings_admin_tools')],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')],
     ])
 
 
@@ -1759,8 +1760,8 @@ def build_admin_add_keyboard() -> InlineKeyboardMarkup:
     ])
 
 def build_backup_restore_keyboard():    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📤 Create & Send Backup", callback_data='settings_backup_create')],
-        [InlineKeyboardButton("📥 Restore Instructions", callback_data='settings_backup_help')],
+        [InlineKeyboardButton("📤 ساخت و ارسال بکاپ", callback_data='settings_backup_create')],
+        [InlineKeyboardButton("📥 راهنمای بازگردانی", callback_data='settings_backup_help')],
         [InlineKeyboardButton("🔙 Back", callback_data='settings_admin_tools')],
     ])
 
@@ -2424,7 +2425,7 @@ def get_main_menu_keyboard(is_admin=False, user_id: int | None = None):
             InlineKeyboardButton(tr(uid, "online_users"), callback_data='online_users'),
         ])
         keyboard.append([
-            InlineKeyboardButton("🩺 Diagnostics", callback_data='diag_rerun'),
+            InlineKeyboardButton("🩺 عیب‌یابی", callback_data='diag_rerun'),
             InlineKeyboardButton(tr(uid, "server_status"), callback_data='server_status'),
         ])
         keyboard.append([
@@ -2512,7 +2513,7 @@ def get_pagination_keyboard(current_page: int, total_pages: int, prefix: str):
     if current_page < total_pages:
         nav_row.append(InlineKeyboardButton("Next ▶️", callback_data=f'{prefix}_page_{current_page+1}'))
     keyboard.append(nav_row)
-    keyboard.append([InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')])
+    keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -2966,7 +2967,7 @@ async def metrics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, (cmd, count) in enumerate(stats['most_used_commands'][:5], 1):
         clean_cmd = cmd.replace('button_', '')
         msg += f"{i}. {clean_cmd}: {count} Times\n"
-    keyboard = [[InlineKeyboardButton("🔄 Update", callback_data='bot_stats')], [InlineKeyboardButton("👥 User Details", callback_data='user_details_page_1')], [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+    keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data='bot_stats')], [InlineKeyboardButton("👥 جزئیات کاربران", callback_data='user_details_page_1')], [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -3488,7 +3489,7 @@ async def assign(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⚠️ Client ID {client_id} already assigned to Telegram ID {tg_id}")
 
         keyboard = [[InlineKeyboardButton("🔗 View Links", callback_data='manage_links')],
-                   [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+                   [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
         await update.message.reply_text("Choose an option:", reply_markup=InlineKeyboardMarkup(keyboard))
     except ValueError:
         await update.message.reply_text("❌ Wrong Format , Use Integer Numbers.")
@@ -5471,7 +5472,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "➕ To Create a New User Follow The Procedure\n\n"
                 "/createuser\n\n"
                 "This Command Guides You Through The Process.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]])
             )
         elif data == 'edit_user_prompt':
             if not is_admin(user_id):
@@ -5481,7 +5482,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📝 To Edit an Existing User Follow The Procedure\n\n"
                 "/edituser\n\n"
                 "This Command Guides You Through The Process.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]])
             )
         elif data == 'delete_user_prompt':
             if not is_admin(user_id):
@@ -5491,7 +5492,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🗑️ To Delete an Existing User Follow The Procedure\n\n"
                 "/deleteuser\n\n"
                 "This Command Guides You Through The Process.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]])
             )
         elif data.startswith('my_usage'):
             parts = data.split('_')
@@ -5892,7 +5893,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if i < len(users) - 1:
                         msg += "\n"
 
-            keyboard = [[InlineKeyboardButton("🔄 Update", callback_data='online_users')], [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+            keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data='online_users')], [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
 
             try:
                 await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -6079,7 +6080,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for cmd, avg_time in list(stats['avg_response_times'].items())[:5]:
                     clean_cmd = cmd.replace('button_', '')
                     msg += f"• {clean_cmd}: {avg_time:.2f}s\n"
-            keyboard = [[InlineKeyboardButton("🔄 Update", callback_data='bot_stats')], [InlineKeyboardButton("👥 User Details", callback_data='user_details_page_1')], [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+            keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data='bot_stats')], [InlineKeyboardButton("👥 جزئیات کاربران", callback_data='user_details_page_1')], [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         elif data.startswith('user_details_page_'):
             if not is_admin(user_id):
@@ -6095,7 +6096,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             start_idx = (page - 1) * ITEMS_PER_PAGE
             end_idx = start_idx + ITEMS_PER_PAGE
             page_users = user_ids[start_idx:end_idx]
-            msg = f"👥 User Details (Page {page}/{total_pages})\n\n"
+            msg = f"👥 جزئیات کاربران (صفحه {page}/{total_pages})\n\n"
             for uid in page_users:
                 client_id = telegram_clients[uid]
                 user_stats = metrics.get_user_stats(uid)
@@ -6245,7 +6246,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [
                 [InlineKeyboardButton("👤 Interactive Assignment", callback_data='assign_interactive')],
                 [InlineKeyboardButton("🔙 Return To List", callback_data='manage_links')],
-                [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
             ]
 
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -6273,7 +6274,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msg += f"\n🕐 Last Activity: {hours}h {minutes}m Ago"
                     else:
                         msg += f"\n🕐 Last Activity: {minutes}m Ago"
-            keyboard = [[InlineKeyboardButton("🔙 Return", callback_data='user_details_page_1')], [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+            keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data='user_details_page_1')], [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         elif data.startswith('unblock_'):
             if not is_admin(user_id):
@@ -6291,7 +6292,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [
                 [InlineKeyboardButton("📢 All Users", callback_data='broadcast_all')],
                 [InlineKeyboardButton("📨 Specific Users", callback_data='broadcast_specific')],
-                [InlineKeyboardButton("🔙 Return", callback_data='main_menu')]
+                [InlineKeyboardButton("🔙 بازگشت", callback_data='main_menu')]
             ]
 
             await query.edit_message_text(
@@ -6309,7 +6310,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['broadcast_type'] = 'all'
             context.user_data['broadcast_users'] = list(telegram_clients.keys())
 
-            keyboard = [[InlineKeyboardButton("🔙 Return", callback_data='broadcast_message')]]
+            keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data='broadcast_message')]]
 
             await query.edit_message_text(
                 f"📢 **Send Broadcast To All Users**\n\n"
@@ -6407,7 +6408,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             context.user_data['broadcast_users'] = broadcast_users
 
-            keyboard = [[InlineKeyboardButton("🔙 Return", callback_data='broadcast_specific')]]
+            keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data='broadcast_specific')]]
 
             await query.edit_message_text(
                 f"📨 **Send Broadcast To Specific Users**\n\n"
@@ -6539,9 +6540,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ) + "\n"
 
             keyboard = [
-                [InlineKeyboardButton("🔄 Update", callback_data='check_inactive_users')],
+                [InlineKeyboardButton("🔄 بروزرسانی", callback_data='check_inactive_users')],
                 [InlineKeyboardButton("🔗 Links", callback_data='manage_links')],
-                [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
             ]
 
             await query.edit_message_text(
@@ -6660,7 +6661,7 @@ async def broadcast_execute_callback(update: Update, context: ContextTypes.DEFAU
         if len(failed_users) > 10:
             result_message += f"& {len(failed_users) - 10} Other User...\n"
 
-    keyboard = [[InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+    keyboard = [[InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
 
     await status_message.edit_text(
         result_message,
@@ -7204,7 +7205,7 @@ async def send_expiration_notification(app, expired_users):
         keyboard = [
             [InlineKeyboardButton("👥 All Clients", callback_data='all_clients_page_1')],
             [InlineKeyboardButton("📝 Edit Users", callback_data='edit_user_prompt')],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
         ]
 
         await app.bot.send_message(
@@ -7393,7 +7394,7 @@ async def show_links_page(query, page: int = 1):
 
     if not telegram_clients:
         msg = "❌ No Link Available"
-        keyboard = [[InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]]
+        keyboard = [[InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
@@ -7463,8 +7464,8 @@ async def show_links_page(query, page: int = 1):
     # Action buttons
     keyboard.extend([
         [InlineKeyboardButton("➕ Add New Link", callback_data='add_link_help')],
-        [InlineKeyboardButton("🔄 Update", callback_data='manage_links')],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data='main_menu')]
+        [InlineKeyboardButton("🔄 بروزرسانی", callback_data='manage_links')],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data='main_menu')]
     ])
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -7561,7 +7562,7 @@ async def show_broadcast_users_page(query, context, page: int = 1):
         [InlineKeyboardButton(f"📋 Selected: {selection_count} User", callback_data='broadcast_selection_summary')],
         [InlineKeyboardButton("✅ Confirm Selection", callback_data='broadcast_confirm_selection')],
         [InlineKeyboardButton("🗑️ Clear Selection", callback_data='broadcast_clear_selection')],
-        [InlineKeyboardButton("🔙 Return", callback_data='broadcast_message')]
+        [InlineKeyboardButton("🔙 بازگشت", callback_data='broadcast_message')]
     ])
 
     context.user_data['broadcast_type'] = 'specific'
