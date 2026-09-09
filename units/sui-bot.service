@@ -1,0 +1,54 @@
+[Unit]
+Description=SUI Bot Telegram Administration Service
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=sui-bot
+Group=sui-bot
+WorkingDirectory=/var/lib/sui-bot
+EnvironmentFile=/etc/sui-bot/sui-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=BOT_LOG_FILE=
+Environment=DATA_DIR=/var/lib/sui-bot
+# v1 legacy path: /opt/sui-bot/.venv — v2 (this file) targets /opt/sui-bot-v2/.venv.
+# Only one of the two unit files may be installed at a time.
+ExecStart=/opt/sui-bot-v2/.venv/bin/python -m sui_bot
+# بعد از ریبوت سرور هم خودکار بالا می‌آید (WantedBy=multi-user) و
+# هر crash/خروجی غیرعمدی بلافاصله ری‌استارت می‌شود (Restart=always).
+# استثنا: exit code 78 = BOT_TOKEN نامعتبر (اصلاح دستی لازم است، حلقهٔ بی‌پایان نمی‌سازیم).
+Restart=always
+RestartPreventExitStatus=78
+RestartSec=10s
+TimeoutStopSec=30s
+SyslogIdentifier=sui-bot
+StandardOutput=journal
+StandardError=journal
+
+# systemd creates this writable directory as /var/lib/sui-bot.
+StateDirectory=sui-bot
+StateDirectoryMode=0750
+UMask=0077
+
+# Service hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

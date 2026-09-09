@@ -1,0 +1,22 @@
+[Unit]
+Description=SUI Sub Page — remaining volume UI (reads S-UI panel API)
+After=network-online.target s-ui.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sui-bot
+Group=sui-bot
+WorkingDirectory=/var/lib/sui-bot
+EnvironmentFile=/etc/sui-bot/sui-bot.env
+Environment=PYTHONUNBUFFERED=1
+# v2 unit — pairs with units/sui-bot.service (v1 path: /opt/sui-bot/.venv)
+ExecStart=/opt/sui-bot-v2/.venv/bin/python -m sui_bot.subpage
+Restart=always
+RestartSec=5s
+SyslogIdentifier=sui-subpage
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

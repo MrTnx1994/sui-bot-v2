@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  SUI-BOT — آپدیت از گیت‌هاب
+#
+#  اجرا:  sui-bot-update          (یا: bash update.sh)
+#
+#  کارها:
+#    1) clone تازهٔ ریپو (نسخهٔ جدید) کنار نسخهٔ فعلی
+#    2) pip uninstall قدیمی → نصب پکیج جدید (فایل‌های حذف‌شده واقعاً پاک می‌شوند)
+#    3) یونیت‌های systemd جدید → daemon-reload → ری‌استارت سرویس‌ها
+#    4) راستی‌آزمایی
+#
+#  داده‌ها (کیف پول، سفارش‌ها، تخفیف‌ها، تنظیمات) در /var/lib/sui-bot
+#  و /etc/sui-bot دست‌نخورده می‌مانند.
+# ============================================================================
+set -euo pipefail
+
+say() { echo -e "\n\033[1;36m==> $*\033[0m"; }
+die() { echo -e "\033[1;31m!! $*\033[0m"; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "با root اجرا کن (sudo -i)"
+
+APP_DIR=/opt/sui-bot-v2
+SRC_DIR=/opt/sui-bot-v2-src
+VENV_PY="$APP_DIR/.venv/bin/python"
+DATA_DIR=/var/lib/sui-bot
+
+# --- پیدا کردن آدرس ریپو (از clone قبلی یا env) ---
+REPO_URL="${REPO_URL:-}"
+if [[ -z $REPO_URL && -d $SRC_DIR/.git ]]; then
+  REPO_URL=$(git -C "$SRC_DIR" config --get remote.origin.url || true)
+fi
+if [[ -z $REPO_URL ]]; then
+  REPO_URL=$(grep -E '^(REPO_URL|SUI_BOT_REPO)=' /etc/sui-bot/sui-bot.env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true)
+fi
+[[ -n $REPO_URL ]] || die "آدرس ریپو پیدا نشد — این‌طوری اجرا کن: REPO_URL=https://github.com/user/repo.git sui-bot-update"
+BRANCH="${BRANCH:-$(git ls-remote --symref "$REPO_URL" HEAD 2>/dev/null | awk '/^ref:/{sub("refs/heads/","",$2); print $2}')}"
+BRANCH="${BRANCH:-master}"
+echo "   ریپو: ${REPO_URL}  (برنچ: ${BRANCH})"
+
+# --- نسخهٔ فعلی برای گزارش ---
+OLD_VER=$("$VENV_PY" -c 'import sui_bot; print(getattr(sui_bot,"__version__","?"))' 2>/dev/null || echo "?")
+
+# ------------------------------------------------------------ 1. clone تازه
+say "دریافت نسخهٔ جدید"
+rm -rf "${SRC_DIR}.new"
+git clone --depth 1 -b "$BRANCH" "$REPO_URL" "${SRC_DIR}.new" 2>/dev/null \
+  || die "clone ناموفق — آدرس ریپو/برنچ را چک کن"
+
+# چک سالم بودن سورس قبل از تعویض
+python3 -c "import sys; sys.path.insert(0,'${SRC_DIR}.new/src'); import sui_bot" \
+  || die "سورس جدید import نمی‌شود — آپدیت لغو شد (نسخهٔ فعلی دست‌نخورده ماند)"
+
+# ------------------------------------------------------------ 2. تعویض سورس + نصب تمیز
+say "تعویض سورس و نصب پکیج جدید (فایل‌های حذف‌شده پاک می‌شوند)"
+rm -rf "$SRC_DIR.old"
+[[ -d $SRC_DIR ]] && mv "$SRC_DIR" "${SRC_DIR}.old"
+mv "${SRC_DIR}.new" "$SRC_DIR"
+
+"$APP_DIR/.venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
+"$APP_DIR/.venv/bin/pip" install -q --upgrade pip
+"$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
+
+# اگر venv از پایه خراب بود، از نو بساز و نصب کن
+if ! "$VENV_PY" -c 'import sui_bot' 2>/dev/null; then
+  say "venv بازسازی می‌شود"
+  rm -rf "$APP_DIR/.venv"
+  python3 -m venv "$APP_DIR/.venv"
+  "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
+  "$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
+fi
+
+# ------------------------------------------------------------ 3. systemd
+say "به‌روزرسانی سرویس‌ها"
+cp "$SRC_DIR/units/sui-bot.service"    /etc/systemd/system/
+cp "$SRC_DIR/units/sui-subpage.service" /etc/systemd/system/
+# اسکریپت‌های مدیریتی هم تازه شوند
+[[ -f $SRC_DIR/update.sh ]]    && install -m 755 "$SRC_DIR/update.sh"    /usr/local/bin/sui-bot-update
+[[ -f $SRC_DIR/uninstall.sh ]] && install -m 755 "$SRC_DIR/uninstall.sh" /usr/local/bin/sui-bot-uninstall
+systemctl daemon-reload
+systemctl enable --now sui-bot sui-subpage >/dev/null 2>&1 || true
+systemctl restart sui-bot sui-subpage
+
+# ------------------------------------------------------------ 4. verify
+say "راستی‌آزمایی"
+sleep 6
+fail=0
+chk() { if eval "$2"; then echo "   ✔ $1"; else echo "   ✗ $1"; fail=1; fi; }
+chk "sui-bot فعال"     "[[ $(systemctl is-active sui-bot) == active ]]"
+chk "sui-subpage فعال" "[[ $(systemctl is-active sui-subpage) == active ]]"
+
+NEW_VER=$("$VENV_PY" -c 'import sui_bot; print(getattr(sui_bot,"__version__","?"))' 2>/dev/null || echo "?")
+echo
+echo "   نسخه: ${OLD_VER}  →  ${NEW_VER}"
+if [[ $fail -eq 0 ]]; then
+  echo -e "\033[1;32m★★★ آپدیت موفق — داده‌ها دست‌نخورده ★★★\033[0m"
+  echo "   نسخهٔ قبلی در ${SRC_DIR}.old نگه داشته شد (بعد از اطمینان پاکش کن)"
+else
+  echo -e "\033[1;33mآپدیت اعمال شد ولی بعضی چک‌ها پاس نشد: journalctl -u sui-bot -n 30\033[0m"
+  echo "   برگشت به نسخهٔ قبلی:  rm -rf $SRC_DIR && mv ${SRC_DIR}.old $SRC_DIR && $APP_DIR/.venv/bin/pip install -q $SRC_DIR && systemctl restart sui-bot sui-subpage"
+fi

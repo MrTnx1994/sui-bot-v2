@@ -1,0 +1,51 @@
+# --- secrets: هرگز کامیت نشوند ---
+sui-bot.env
+.env
+*.env.local
+.env.*
+
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# --- data / runtime state (دیتای مشتری‌ها و کش پنل) ---
+data/
+sui-bot-data/
+store_data/
+backups/
+admin_owners.json
+assignments.json
+extra_admins.json
+metrics.json
+plans_config.json
+runtime_settings.json
+subscription_cache.json
+inbounds_cache.json
+user_languages.json
+expired_notifications.json
+keyboard_cleanup.json
+shop_orders.json
+payments.json
+discounts.json
+trial_users.json
+resellers.json
+
+# --- logs ---
+*.log
+logs/
+launch*.log
+bot_run*.log
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
