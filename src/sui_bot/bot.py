@@ -25,13 +25,12 @@ import aiohttp
 import psutil
 from telegram import (
     Update,
-    BotCommand,
     BotCommandScopeChat,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
     KeyboardButtonRequestUsers,
-    MenuButtonCommands,
+    MenuButtonDefault,
     MenuButtonWebApp,
     WebAppInfo,
     ReplyKeyboardMarkup,
@@ -2579,53 +2578,33 @@ async def menu_toggle_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def setup_bot_commands(app) -> None:
-    """/ منوی تلگرام (دکمهٔ آبی کنار فیلد تایپ) + کامندهای ادمین در چت ادمین."""
-    logger.info("Registering Telegram command menu (default + %d admin scope(s))", len(ADMIN_IDS))
+    """دکمهٔ مربعی کنار کادر تایپ = مینی‌اپ منوی اصلی (باز شدن مستقیم).
+
+    لیست کامندها عمداً کاملاً حذف می‌شود — هیچ پنل واسطی نباید باز شود.
+    دستورها (/shop، /wallet و…) همچنان با تایپ کار می‌کنند، فقط فهرست نمی‌شوند.
+    """
+    logger.info("Applying Telegram menu button (WebApp) and clearing command lists")
     try:
-        _user_commands = [
-            BotCommand("start", "منو اصلی"),
-            BotCommand("topup", "شارژ حساب"),
-            BotCommand("deploy", "ایجاد سرور"),
-            BotCommand("usage", "اشتراک‌های من"),
-            BotCommand("shop", "خرید اشتراک"),
-            BotCommand("support", "پشتیبانی"),
-        ]
-        if SETTINGS.store_enabled:
-            _user_commands.append(BotCommand("wallet", "کیف پول"))
-            if getattr(SETTINGS, "trial_enabled", True):
-                _user_commands.append(BotCommand("trial", "اکانت تست رایگان"))
-        await app.bot.set_my_commands(_user_commands)
-        # کامندهای ادمین فقط داخل چت ادمین‌ها ظاهر می‌شوند
-        for admin_id in ADMIN_IDS:
-            _admin_commands = list(_user_commands) + [
-                BotCommand("diag", "تست سلامت پنل"),
-                BotCommand("panel", "داشبورد مدیریت"),
-                BotCommand("metrics", "آمار ربات"),
-                BotCommand("checkinactive", "بررسی غیرفعال‌ها"),
-            ]
-            if SETTINGS.store_enabled:
-                _admin_commands.append(BotCommand("discounts", "مدیریت کدهای تخفیف"))
-            await app.bot.set_my_commands(
-                _admin_commands,
-                scope=BotCommandScopeChat(admin_id),
-            )
-        # دکمهٔ مربعی کنار کادر تایپ: اگر MENU_WEBAPP_URL تنظیم شده باشد
-        # مینی‌اپ «منوی اصلی» باز می‌شود؛ وگرنه لیست کامندها (رفتار قبلی).
         menu_url = getattr(SETTINGS, "menu_webapp_url", "") or ""
         if menu_url:
-            try:
-                await app.bot.set_chat_menu_button(
-                    menu_button=MenuButtonWebApp(text="منو", web_app=WebAppInfo(url=menu_url))
-                )
-                logger.info("Telegram menu button set to WebApp: %s", menu_url)
-            except TelegramError as exc:
-                logger.warning("WebApp menu button rejected (%s); falling back to commands", exc)
-                await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+            await app.bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(text="منو", web_app=WebAppInfo(url=menu_url))
+            )
+            logger.info("Telegram menu button set to WebApp: %s", menu_url)
         else:
-            await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-        logger.info("Telegram command menu registered")
+            # آدرس منو تنظیم نشده → رفتار پیش‌فرض تلگرام (تنظیمات BotFather)
+            await app.bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+            logger.warning("MENU_WEBAPP_URL is empty — menu button follows BotFather default")
+        # پاک‌سازی کامل لیست کامندها در همهٔ اسکوپ‌ها — دکمهٔ دوم/پنل واسط وجود نداشته باشد
+        await app.bot.delete_my_commands(scope=BotCommandScopeDefault())
+        for admin_id in ADMIN_IDS:
+            try:
+                await app.bot.delete_my_commands(scope=BotCommandScopeChat(admin_id))
+            except TelegramError:
+                pass
+        logger.info("Telegram command lists cleared; square button opens the menu mini app directly")
     except TelegramError as exc:
-        logger.warning("Could not register bot commands: %s", exc)
+        logger.warning("Could not apply menu button: %s", exc)
 
 
 @rate_limited(admin_only=False)

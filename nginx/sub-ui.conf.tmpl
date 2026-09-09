@@ -1,40 +1,24 @@
-# sub-UI: مرورگر → UI جدید (8099) | اپ‌های v2ray → دادهٔ خام از s-ui:2097
-# دامنه و مسیر گواهی هنگام نصب با sed جایگزین می‌شود
-map $http_user_agent $sub_backend {
-    default                                              https://127.0.0.1:2097;
-    "~(Mozilla|Chrome|Safari|Edge|Firefox|Android|iPhone|iPad)"  http://127.0.0.1:8099;
-}
-
+# sub-UI (install.sh substitutes domain/cert/port):
+#   everything proxies to our subpage service (127.0.0.1:8099) which serves
+#   the browser UI + Telegram menu page, and raw config feeds for VPN-app
+#   user agents.  The s-ui panel ports (2095/2096/2097) are never touched.
 server {
-    listen 2096 ssl;
+    listen __UI_PORT__ ssl;
     server_name __DOMAIN__;
 
     ssl_certificate __CERT__;
     ssl_certificate_key __CERTKEY__;
 
-    # 1. raw feed for JavaScript dashboard
-    location /rawsub/sub/ {
-        proxy_pass https://127.0.0.1:2097/sub/;
-        proxy_set_header Host __DOMAIN__;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_ssl_name __DOMAIN__;
-        proxy_ssl_server_name on;
-        proxy_ssl_verify off;
-    }
-
-    # 2. subscription path — browser→UI (8099), VPN apps→raw feed
+    # subscription pages + Telegram menu mini-app (+ raw feed for VPN-app UAs)
     location /sub/ {
-        proxy_pass $sub_backend$request_uri;
-        proxy_set_header Host __DOMAIN__;
+        proxy_pass http://127.0.0.1:8099;
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_ssl_name __DOMAIN__;
-        proxy_ssl_server_name on;
-        proxy_ssl_verify off;
     }
 
-    # ۳. ریشهٔ دامنه → پیام راهنما
+    # root → short guide page
     location = / {
-        return 200 '<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>اشتراک نبض | Pulse VPN</title></head><body style="font-family:Tahoma;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:44px">⚡</div><h2 style="margin:10px 0">اشتراک نبض | Pulse VPN</h2><p style="color:#94a3b8;font-size:14px">برای دیدن حجم باقیمانده، لینک اشتراک خودت را باز کن:<br><code style="color:#7dd3fc">https://__DOMAIN__:2096/sub/نام-شما</code></p></div></body></html>';
+        return 200 '<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>اشتراک Vpnfiy</title></head><body style="font-family:Tahoma;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:44px">⚡</div><h2 style="margin:10px 0">اشتراک Vpnfiy</h2><p style="color:#94a3b8;font-size:14px">لینک اشتراک شما:<br><code style="color:#7dd3fc">https://__DOMAIN__:__UI_PORT__/sub/نام-شما</code></p></div></body></html>';
         default_type text/html;
     }
 }

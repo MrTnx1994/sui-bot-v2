@@ -5,7 +5,7 @@
 #  Run:
 #    REPO_URL=https://github.com/<USER>/<REPO>.git bash <(curl -fsSL https://raw.githubusercontent.com/<USER>/<REPO>/master/install.sh)
 #
-#  Installs: sui-bot (Telegram bot) + sui-subpage (sub UI + menu) + nginx (2096)
+#  Installs: sui-bot (Telegram bot) + sui-subpage (sub UI + menu) + nginx (own port)
 #  Auto-detects the local s-ui panel (port, domain, cert, API token).
 # ============================================================================
 set -euo pipefail
@@ -179,21 +179,21 @@ BOT_TOKEN_VAL=$(grep -E '^BOT_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -
   || die "BOT_TOKEN is empty — the bot cannot start; run the installer again."
 
 # --- rewrite server-derived values (sample placeholders must not survive) ---
+# --- rewrite server-derived values (sample placeholders must not survive) ---
 sed -i "s#^SUI_HOST=.*#SUI_HOST=\"https://${WEB_DOMAIN}:${WEB_PORT}/app\"#" /etc/sui-bot/sui-bot.env
 _upsert() {  # _upsert KEY VALUE
   grep -q "^$1=" /etc/sui-bot/sui-bot.env \
     && sed -i "s#^$1=.*#$1=\"$2\"#" /etc/sui-bot/sui-bot.env \
     || echo "$1=\"$2\"" >> /etc/sui-bot/sui-bot.env
 }
-_upsert "SUB_BASE_URL_OVERRIDE" "https://${WEB_DOMAIN}:2096/sub"
-_upsert "MENU_WEBAPP_URL"       "https://${WEB_DOMAIN}:2096/sub/menu"
+# Web UI port is decided in the nginx section; placeholders here are rewritten
+# there (SUB_BASE_URL_OVERRIDE / MENU_WEBAPP_URL).  Keep other basics:
 _upsert "STORE_ENABLED"         "true"
 _upsert "DATA_DIR"              "/var/lib/sui-bot"
 _upsert "SUBPAGE_PORT"          "8099"
 _upsert "SUBPAGE_BIND"          "127.0.0.1"
 SUI_TOKEN_VAL=$(grep -E '^SUI_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
 echo "   SUI_HOST → https://${WEB_DOMAIN}:${WEB_PORT}/app"
-echo "   MENU     → https://${WEB_DOMAIN}:2096/sub/menu"
 
 # ------------------------------------------------------------ 3. panel API token compatibility
 say "Ensuring API token exists inside the panel DB"
@@ -279,91 +279,41 @@ grep -q '^SUI_BOT_REPO=' /etc/sui-bot/sui-bot.env \
 systemctl daemon-reload
 systemctl enable --now sui-bot sui-subpage
 
-# ------------------------------------------------------------ 8. nginx
+# ------------------------------------------------------------ 8. web UI (menu + sub pages)
+# NOTE: the s-ui panel and its own ports (2095/2096/2097...) are NEVER touched.
+# Our web UI (browser sub pages + Telegram menu mini-app) listens on its own
+# free port — default 8443, override with WEB_UI_PORT=xxxx before install.
 if [[ ${SKIP_NGINX:-0} != 1 ]]; then
-  say "nginx — port 2096 (browser→UI+menu / VPN apps→raw feed)"
-
-  # Normalize: s-ui's own sub service must live on 2097 (nginx owns 2096),
-  # and the panel's advertised subURI must point at the public nginx origin.
-  if ss -ltn 2>/dev/null | grep -q ':2096 ' || [[ $SUB_PORT == 2096 ]]; then
-    owner=$(ss -ltnp 2>/dev/null | grep ':2096 ' | grep -oP 'users:\(\("\K[^"]+' | head -1 || true)
-    echo "   port 2096 currently used by: ${owner:-unknown}"
-  fi
-  say "Normalizing: s-ui sub → 2097, public subURI → https://${WEB_DOMAIN}:2096"
-  systemctl stop s-ui 2>/dev/null || true
-  sleep 1
-  python3 - "$SUI_DB" "$WEB_DOMAIN" << 'PY'
-import sqlite3, sys
-n = sqlite3.connect(sys.argv[1], timeout=15)
-dom = sys.argv[2]
-def upsert(key, value):
-    if n.execute("SELECT 1 FROM settings WHERE key=?", (key,)).fetchone():
-        n.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
-    else:
-        n.execute("INSERT INTO settings(key,value) VALUES (?,?)", (key, value))
-upsert('subPort', '2097')
-upsert('subURI', f'https://{dom}:2096')
-n.commit()
-print("   panel: subPort → 2097, subURI → https://%s:2096" % dom)
-PY
-  SUB_PORT=2097
-  systemctl start s-ui 2>/dev/null || true
-  sleep 3
-  if ss -ltn 2>/dev/null | grep -q ':2096 '; then
-    warn "port 2096 is STILL occupied after s-ui restart — investigate: ss -ltnp | grep 2096"
-  else
-    echo "   ✔ 2096 is free for nginx; s-ui sub moved to 2097"
-  fi
-
-  # sub backend scheme: https only if the panel sub service has its own cert+key
-  SUB_SCHEME=$(python3 - "$SUI_DB" << 'PY'
-import sqlite3, sys, os
-n = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
-g = lambda k: (n.execute("SELECT value FROM settings WHERE key=?", (k,)).fetchone() or ('',))[0] or ''
-key, cert = g('subKeyFile'), g('subCertFile')
-print('https' if key and cert and os.path.exists(key) and os.path.exists(cert) else 'http')
-PY
-)
-  echo "   sub backend: ${SUB_SCHEME}://127.0.0.1:${SUB_PORT}"
+  say "Web UI (browser sub pages + Telegram menu) on its own port"
+  WEB_UI_PORT="${WEB_UI_PORT:-44307}"
+  # اگر پورت انتخابی اشغال بود، بین پورت‌های ۵ رقمی آزاد بگرد
+  for cand in 44307 44308 45307 46307 47307; do
+    if ! ss -ltn 2>/dev/null | grep -q ":${cand} "; then
+      WEB_UI_PORT=$cand; break
+    fi
+  done
+  echo "   web UI port: ${WEB_UI_PORT}"
 
   command -v nginx >/dev/null || { apt-get update -qq; apt-get install -y -qq nginx; }
   sed -e "s/__DOMAIN__/${WEB_DOMAIN}/g" \
+      -e "s/__UI_PORT__/${WEB_UI_PORT}/g" \
       -e "s#__CERT__#${CERT}#g" \
       -e "s#__CERTKEY__#${CERTKEY}#g" \
-      -e "s#https://127.0.0.1:2097#${SUB_SCHEME}://127.0.0.1:${SUB_PORT}#g" \
+      -e "s#https://127.0.0.1:2097#http://127.0.0.1:8099#g" \
       "$HERE/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
   ln -sf /etc/nginx/sites-available/sub-ui /etc/nginx/sites-enabled/sub-ui
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx
   sleep 1
-  if ss -ltnp 2>/dev/null | grep ':2096 ' | grep -q nginx; then
-    echo "   ✔ nginx is serving 2096"
+  if ss -ltnp 2>/dev/null | grep ":${WEB_UI_PORT} " | grep -q nginx; then
+    echo "   ✔ nginx is serving web UI on ${WEB_UI_PORT}"
   else
-    warn "nginx did not take 2096 — check: ss -ltnp | grep 2096"
+    warn "nginx did not take ${WEB_UI_PORT} — check: ss -ltnp | grep ${WEB_UI_PORT}"
   fi
 
-  # WebApp menu button works best on the standard 443 port — some Telegram
-  # clients refuse to deep-open webapp URLs on custom ports.
-  MENU_URL="https://${WEB_DOMAIN}:2096/sub/menu"
-  if ! ss -ltn 2>/dev/null | grep -q ':443 '; then
-    sed -i "s#    listen 2096 ssl;#    listen 2096 ssl;\n    listen 443 ssl;#" /etc/nginx/sites-available/sub-ui
-    if nginx -t 2>/dev/null && systemctl reload nginx && ss -ltn 2>/dev/null | grep -q ':443 '; then
-      MENU_URL="https://${WEB_DOMAIN}/sub/menu"
-      echo "   ✔ also serving on standard port 443 → menu button uses it"
-    else
-      cp /etc/nginx/sites-available/sub-ui "${HERE}/sub-ui.conf.bak443" 2>/dev/null || true
-      git -C "$HERE" checkout -q -- . 2>/dev/null || true
-      # revert: rebuild config without 443
-      sed -e "s/__DOMAIN__/${WEB_DOMAIN}/g" \
-          -e "s#__CERT__#${CERT}#g" \
-          -e "s#__CERTKEY__#${CERTKEY}#g" \
-          -e "s#https://127.0.0.1:2097#${SUB_SCHEME}://127.0.0.1:${SUB_PORT}#g" \
-          "$HERE/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
-      nginx -t && systemctl reload nginx
-      echo "   (443 unavailable — menu button stays on 2096)"
-    fi
-  fi
+  MENU_URL="https://${WEB_DOMAIN}:${WEB_UI_PORT}/sub/menu"
   _upsert "MENU_WEBAPP_URL" "$MENU_URL"
+  _upsert "SUB_BASE_URL_OVERRIDE" "https://${WEB_DOMAIN}:${WEB_UI_PORT}/sub"
   echo "   MENU     → $MENU_URL"
 fi
 
@@ -378,9 +328,9 @@ chk "auto-start on reboot (sui-bot)"     "systemctl is-enabled sui-bot | grep -q
 chk "auto-start on reboot (sui-subpage)" "systemctl is-enabled sui-subpage | grep -q enabled"
 chk "nginx active"          "systemctl is-active nginx"
 chk "panel API via token"   "curl -sk --max-time 8 --resolve '${WEB_DOMAIN}:${WEB_PORT}:127.0.0.1' -H 'Token: ${SUI_TOKEN_VAL}' 'https://${WEB_DOMAIN}:${WEB_PORT}/app/apiv2/clients' | grep -q '\"success\":true'"
-chk "web menu 2096"         "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:2096/sub/menu' | grep -q 200"
-chk "browser UI 2096"       "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:2096/sub/test' | grep -q 200"
-chk "app feed 2096"         "curl -sk -o /dev/null -w '%{http_code}' -A 'v2rayNG' 'https://127.0.0.1:2096/sub/test' | grep -qE '200|404'"
+chk "web menu (UI :${WEB_UI_PORT})"   "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:${WEB_UI_PORT}/sub/menu' | grep -q 200"
+chk "browser UI (UI :${WEB_UI_PORT})" "curl -sk -o /dev/null -w '%{http_code}' -A 'Mozilla/5.0' 'https://127.0.0.1:${WEB_UI_PORT}/sub/test' | grep -q 200"
+chk "app feed (UI :${WEB_UI_PORT})"   "curl -sk -o /dev/null -w '%{http_code}' -A 'v2rayNG' 'https://127.0.0.1:${WEB_UI_PORT}/sub/test' | grep -qE '200|404'"
 
 if [[ $fail -eq 0 ]]; then
   echo -e "\033[1;32m★★★ ALL CHECKS PASSED — INSTALL COMPLETE ★★★\033[0m"
