@@ -78,6 +78,52 @@ cp "$SRC_DIR/units/sui-subpage.service" /etc/systemd/system/
 [[ -f $SRC_DIR/update.sh ]]    && install -m 755 "$SRC_DIR/update.sh"    /usr/local/bin/sui-bot-update
 [[ -f $SRC_DIR/uninstall.sh ]] && install -m 755 "$SRC_DIR/uninstall.sh" /usr/local/bin/sui-bot-uninstall
 systemctl daemon-reload
+
+# ------------------------------------------------------------ 3.1 nginx هم‌گام با نسخهٔ جدید
+# اگر قالب nginx تغییر کرده باشد، کانفیگ فعال دوباره از روی آن ساخته می‌شود
+# (دامنه/گواهی/پورت از کانفیگ فعلی استخراج می‌شود — پنل دست نمی‌خورد)
+say "هم‌گام‌سازی nginx با نسخهٔ جدید"
+CUR_DOMAIN=$(grep -oPm1 'server_name\s+\K[^;]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
+CUR_CERT=$(grep -oPm1 'ssl_certificate\s+\K[^;]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
+CUR_KEY=$(grep -oPm1 'ssl_certificate_key\s+\K[^;]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
+CUR_PORT=$(grep -oPm1 'listen\s+\K[0-9]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 | xargs || true)
+CUR_PORT=${CUR_PORT:-44307}
+if [[ -z $CUR_DOMAIN ]]; then
+  CUR_DOMAIN=$(grep -E '^SUI_HOST=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | sed 's#https://##; s#/app.*##')
+fi
+if [[ -n $CUR_DOMAIN && -f $CUR_CERT && -f $CUR_KEY && -f $SRC_DIR/nginx/sub-ui.conf.tmpl ]]; then
+  sed -e "s/__DOMAIN__/${CUR_DOMAIN}/g" \
+      -e "s/__UI_PORT__/${CUR_PORT}/g" \
+      -e "s#__CERT__#${CUR_CERT}#g" \
+      -e "s#__CERTKEY__#${CUR_KEY}#g" \
+      "$SRC_DIR/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
+  nginx -t && systemctl reload nginx
+  _upsert_env() {
+    grep -q "^$1=" /etc/sui-bot/sui-bot.env \
+      && sed -i "s#^$1=.*#$1=\"$2\"#" /etc/sui-bot/sui-bot.env \
+      || echo "$1=\"$2\"" >> /etc/sui-bot/sui-bot.env
+  }
+  _upsert_env "MENU_WEBAPP_URL"      "https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
+  _upsert_env "SUB_BASE_URL_OVERRIDE" "https://${CUR_DOMAIN}:${CUR_PORT}/sub"
+  echo "   ✔ nginx + MENU هم‌گام شد → https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
+else
+  echo "   (کانفیگ nginx فعلی کامل نیست — بدون تغییر ماند؛ install.sh را دوباره اجرا کن)"
+fi
+
+# ------------------------------------------------------------ 3.2 یکدست‌سازی زبان
+# همهٔ کاربران → فارسی (زبان انتخابی قبلی پاک می‌شود؛ کاربر می‌تواند از 🌐 عوض کند)
+say "یکدست‌سازی زبان ربات (فارسی پیش‌فرض)"
+LANG_FILE="${DATA_DIR}/user_languages.json"
+if [[ -f $LANG_FILE ]]; then
+  cp "$LANG_FILE" "${LANG_FILE}.bak-$(date +%s)"
+  echo '{}' > "$LANG_FILE"
+  chown sui-bot:sui-bot "$LANG_FILE" 2>/dev/null || true
+  echo "   ✔ همهٔ کاربران به فارسی برگشتند"
+else
+  echo "   (فایل زبان نبود — پیش‌فرض فارسی اعمال می‌شود)"
+fi
+
+# همه‌چیز آماده شد → حالا ری‌استارت
 systemctl enable --now sui-bot sui-subpage >/dev/null 2>&1 || true
 systemctl restart sui-bot sui-subpage
 

@@ -10,10 +10,8 @@ from pathlib import Path
 from typing import Any
 
 SUPPORTED_LANGUAGES = {
-    "en": "English 🇬🇧",
     "fa": "فارسی 🇮🇷",
-    "ru": "Русский 🇷🇺",
-    "zh": "中文 🇨🇳",
+    "en": "English 🇬🇧",
 }
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
@@ -181,13 +179,13 @@ class LanguageStore:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
+                # فقط زبان‌های معتبر؛ هر چیز نامعتبر → حذف (fallback به فارسی)
                 self._languages = {
                     int(user_id): language for user_id, language in data.items()
                     if language in SUPPORTED_LANGUAGES
                 }
         except (OSError, ValueError, json.JSONDecodeError):
             self._languages = {}
-
     def get(self, user_id: int) -> str | None:
         return self._languages.get(user_id)
 
