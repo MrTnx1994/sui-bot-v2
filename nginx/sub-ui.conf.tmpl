@@ -16,6 +16,12 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
+    # health probe (update.sh verify + monitoring)
+    location = /health {
+        proxy_pass http://127.0.0.1:8099;
+        proxy_set_header Host $host;
+    }
+
     # root → short guide page
     location = / {
         return 200 '<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>اشتراک Vpnfiy</title></head><body style="font-family:Tahoma;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><div style="font-size:44px">⚡</div><h2 style="margin:10px 0">اشتراک Vpnfiy</h2><p style="color:#94a3b8;font-size:14px">لینک اشتراک شما:<br><code style="color:#7dd3fc">https://__DOMAIN__:__UI_PORT__/sub/نام-شما</code></p></div></body></html>';

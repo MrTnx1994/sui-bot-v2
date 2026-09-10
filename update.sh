@@ -167,10 +167,10 @@ fail=0
 chk() { if eval "$2"; then echo "   ✔ $1"; else echo "   ✗ $1"; fail=1; fi; }
 chk "sui-bot فعال"     "[[ $(systemctl is-active sui-bot) == active ]]"
 chk "sui-subpage فعال" "[[ $(systemctl is-active sui-subpage) == active ]]"
-SUB_BASE_VAL=$(grep -E '^SUB_BASE_URL_OVERRIDE=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' || true)
-if [[ -n $SUB_BASE_VAL ]]; then
-  HEALTH_URL="${SUB_BASE_VAL%/sub}/health"
-  chk "سرویس صفحهٔ اشتراک (health)" "curl -fsk --max-time 8 '$HEALTH_URL' | grep -q '\"ok\": *true'"
+# health را لوکال چک کن (پورت واقعی nginx) — مستقل از DNS
+HEALTH_PORT=$(grep -oPm1 'listen\s+\K[0-9]+' /etc/nginx/sites-available/sub-ui 2>/dev/null | head -1 || true)
+if [[ -n $HEALTH_PORT ]]; then
+  chk "سرویس صفحهٔ اشتراک (health :${HEALTH_PORT})" "curl -fsk --max-time 8 'https://127.0.0.1:${HEALTH_PORT}/health' | grep -q 'ok'"
 fi
 
 NEW_VER=$("$VENV_PY" -c 'import sui_bot; print(getattr(sui_bot,"__version__","?"))' 2>/dev/null || echo "?")
