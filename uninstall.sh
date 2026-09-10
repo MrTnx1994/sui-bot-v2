@@ -69,7 +69,11 @@ if [[ ${KEEP_NGINX:-1} == 1 ]]; then
 else
   say "حذف کانفیگ nginx 2096"
   rm -f /etc/nginx/sites-enabled/sub-ui /etc/nginx/sites-available/sub-ui
-  nginx -t && systemctl reload nginx
+  if nginx -t; then
+    systemctl reload nginx
+  else
+    echo "   ⚠ nginx config test failed — not reloading"
+  fi
   ok "کانفیگ sub-ui از nginx حذف شد"
 fi
 
