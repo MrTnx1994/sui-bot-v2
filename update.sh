@@ -60,7 +60,9 @@ python3 -c "import sys; sys.path.insert(0,'${SRC_DIR}.new/src'); import sui_bot"
 # ------------------------------------------------------------ 2. تعویض سورس + نصب تمیز
 say "تعویض سورس و نصب پکیج جدید (فایل‌های حذف‌شده پاک می‌شوند)"
 rm -rf "$SRC_DIR.old"
-[[ -d $SRC_DIR ]] && mv "$SRC_DIR" "${SRC_DIR}.old"
+if [[ -d $SRC_DIR ]]; then
+  mv "$SRC_DIR" "${SRC_DIR}.old"
+fi
 mv "${SRC_DIR}.new" "$SRC_DIR"
 
 # اگر venv وجود نداشت یا خراب بود، از نو بساز
@@ -84,8 +86,12 @@ say "به‌روزرسانی سرویس‌ها"
 cp "$SRC_DIR/units/sui-bot.service"    /etc/systemd/system/
 cp "$SRC_DIR/units/sui-subpage.service" /etc/systemd/system/
 # اسکریپت‌های مدیریتی هم تازه شوند
-[[ -f $SRC_DIR/update.sh ]]    && install -m 755 "$SRC_DIR/update.sh"    /usr/local/bin/sui-bot-update
-[[ -f $SRC_DIR/uninstall.sh ]] && install -m 755 "$SRC_DIR/uninstall.sh" /usr/local/bin/sui-bot-uninstall
+if [[ -f $SRC_DIR/update.sh ]]; then
+  install -m 755 "$SRC_DIR/update.sh" /usr/local/bin/sui-bot-update
+fi
+if [[ -f $SRC_DIR/uninstall.sh ]]; then
+  install -m 755 "$SRC_DIR/uninstall.sh" /usr/local/bin/sui-bot-uninstall
+fi
 systemctl daemon-reload
 
 # ------------------------------------------------------------ 3.1 nginx هم‌گام با نسخهٔ جدید
@@ -162,7 +168,9 @@ chk() { if eval "$2"; then echo "   ✔ $1"; else echo "   ✗ $1"; fail=1; fi; 
 chk "sui-bot فعال"     "[[ $(systemctl is-active sui-bot) == active ]]"
 chk "sui-subpage فعال" "[[ $(systemctl is-active sui-subpage) == active ]]"
 MENU_URL_VAL=$(grep -E '^MENU_WEBAPP_URL=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' || true)
-[[ -n $MENU_URL_VAL ]] && chk "صفحهٔ منوی وب" "curl -fsk --max-time 8 -A 'Mozilla/5.0' '$MENU_URL_VAL' | grep -q telegram-web-app.js"
+if [[ -n $MENU_URL_VAL ]]; then
+  chk "صفحهٔ منوی وب" "curl -fsk --max-time 8 -A 'Mozilla/5.0' '$MENU_URL_VAL' | grep -q telegram-web-app.js"
+fi
 
 NEW_VER=$("$VENV_PY" -c 'import sui_bot; print(getattr(sui_bot,"__version__","?"))' 2>/dev/null || echo "?")
 echo
