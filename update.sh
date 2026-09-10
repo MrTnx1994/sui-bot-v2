@@ -65,21 +65,32 @@ if [[ -d $SRC_DIR ]]; then
 fi
 mv "${SRC_DIR}.new" "$SRC_DIR"
 
+# اطمینان از ensurepip — بدون پکیج python3-venv، venv بدون pip ساخته می‌شود
+if ! python3 -m ensurepip --version >/dev/null 2>&1; then
+  say "python3-venv نصب می‌شود (برای ساخت venv با pip)"
+  apt-get update -qq
+  apt-get install -y -qq python3-venv
+fi
+
 # اگر venv وجود نداشت یا خراب بود، از نو بساز
 if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
   say "venv وجود ندارد — از نو ساخته می‌شود"
   rm -rf "$APP_DIR/.venv"
   python3 -m venv "$APP_DIR/.venv"
 fi
-if ! "$VENV_PY" -c 'import sui_bot' 2>/dev/null; then
-  "$APP_DIR/.venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
-  "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
-  "$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
-else
-  "$APP_DIR/.venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
-  "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
-  "$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
+
+# نصب با python -m pip (باینری pip ممکنه وجود نداشته باشه؛ فقط pip3 یا هیچ)
+venv_pip() { "$VENV_PY" -m pip "$@"; }
+if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+  "$VENV_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
 fi
+if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+  die "pip داخل venv در دسترس نیست — دستی بساز: python3 -m venv $APP_DIR/.venv"
+fi
+venv_pip uninstall -y -q sui-bot 2>/dev/null || true
+venv_pip install -q --upgrade pip
+venv_pip install -q "$SRC_DIR"
+"$VENV_PY" -c 'import sui_bot' || die "نصب پکیج جدید ناموفق بود — سرویس‌ها دست‌نخورده ماندند"
 
 # ------------------------------------------------------------ 3. systemd
 say "به‌روزرسانی سرویس‌ها"
@@ -126,25 +137,10 @@ if [[ -n $CUR_DOMAIN && -f $CUR_CERT && -f $CUR_KEY && -f $SRC_DIR/nginx/sub-ui.
   else
     echo "   ⚠ nginx config test failed — not reloading"
   fi
-  _upsert_env "MENU_WEBAPP_URL"      "https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
   _upsert_env "SUB_BASE_URL_OVERRIDE" "https://${CUR_DOMAIN}:${CUR_PORT}/sub"
-  echo "   ✔ nginx + MENU هم‌گام شد → https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
+  echo "   ✔ nginx هم‌گام شد → https://${CUR_DOMAIN}:${CUR_PORT}/sub"
 else
   echo "   (کانفیگ nginx فعلی کامل نیست — بدون تغییر ماند؛ install.sh را دوباره اجرا کن)"
-fi
-
-# ------------------------------------------------------------ 3.3 BOT_USERNAME برای کارت‌های منو
-say "ساخت BOT_USERNAME (لینک deep-link کارت‌های منو)"
-BOT_TOKEN_VAL=$(grep -E '^BOT_TOKEN=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' | xargs || true)
-if [[ -n $BOT_TOKEN_VAL && $BOT_TOKEN_VAL != "replace-me" ]]; then
-  BOT_UNAME=$(curl -fsS --max-time 10 "https://api.telegram.org/bot${BOT_TOKEN_VAL}/getMe" 2>/dev/null \
-              | python3 -c 'import json,sys;print(json.load(sys.stdin).get("result",{}).get("username",""))' 2>/dev/null || true)
-  if [[ -n $BOT_UNAME ]]; then
-    _upsert_env "BOT_USERNAME" "$BOT_UNAME"
-    echo "   ✔ BOT_USERNAME → ${BOT_UNAME}"
-  else
-    echo "   ⚠ getMe جواب نداد — کارت‌های منو روی sendData می‌افتند (کار می‌کنند ولی با تاخیر)"
-  fi
 fi
 
 # ------------------------------------------------------------ 3.2 یکدست‌سازی زبان
@@ -171,9 +167,10 @@ fail=0
 chk() { if eval "$2"; then echo "   ✔ $1"; else echo "   ✗ $1"; fail=1; fi; }
 chk "sui-bot فعال"     "[[ $(systemctl is-active sui-bot) == active ]]"
 chk "sui-subpage فعال" "[[ $(systemctl is-active sui-subpage) == active ]]"
-MENU_URL_VAL=$(grep -E '^MENU_WEBAPP_URL=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' || true)
-if [[ -n $MENU_URL_VAL ]]; then
-  chk "صفحهٔ منوی وب" "curl -fsk --max-time 8 -A 'Mozilla/5.0' '$MENU_URL_VAL' | grep -q telegram-web-app.js"
+SUB_BASE_VAL=$(grep -E '^SUB_BASE_URL_OVERRIDE=' /etc/sui-bot/sui-bot.env | tail -1 | cut -d= -f2- | tr -d '"' || true)
+if [[ -n $SUB_BASE_VAL ]]; then
+  HEALTH_URL="${SUB_BASE_VAL%/sub}/health"
+  chk "سرویس صفحهٔ اشتراک (health)" "curl -fsk --max-time 8 '$HEALTH_URL' | grep -q '\"ok\": *true'"
 fi
 
 NEW_VER=$("$VENV_PY" -c 'import sui_bot; print(getattr(sui_bot,"__version__","?"))' 2>/dev/null || echo "?")
@@ -184,5 +181,5 @@ if [[ $fail -eq 0 ]]; then
   echo "   نسخهٔ قبلی در ${SRC_DIR}.old نگه داشته شد (بعد از اطمینان پاکش کن)"
 else
   echo -e "\033[1;33mآپدیت اعمال شد ولی بعضی چک‌ها پاس نشد: journalctl -u sui-bot -n 30\033[0m"
-  echo "   برگشت به نسخهٔ قبلی:  rm -rf $SRC_DIR && mv ${SRC_DIR}.old $SRC_DIR && $APP_DIR/.venv/bin/pip install -q $SRC_DIR && systemctl restart sui-bot sui-subpage"
+  echo "   برگشت به نسخهٔ قبلی:  rm -rf $SRC_DIR && mv ${SRC_DIR}.old $SRC_DIR && $VENV_PY -m pip install -q $SRC_DIR && systemctl restart sui-bot sui-subpage"
 fi

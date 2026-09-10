@@ -2572,8 +2572,7 @@ async def menu_toggle_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def setup_bot_commands(app) -> None:
     """دکمهٔ مربعی تلگرام = لیست استاندارد دستورات؛ هر دستور داخل خود ربات منو را باز می‌کند.
 
-    مینی‌اپ وب از دکمه حذف شد — هیچ صفحهٔ واسطی بین کاربر و دستورها نیست.
-    صفحهٔ /sub/menu همچنان در مرورگر باز می‌ماند (برای لینک‌های اشتراک)، فقط دکمه آن را باز نمی‌کند.
+    هیچ مینی‌اپ/وب‌اپی به دکمه وصل نیست (به درخواست کاربر حذف شد) — بدون صفحهٔ واسط.
     """
     logger.info("Registering Telegram command menu (default + %d admin scope(s))", len(ADMIN_IDS))
     try:
@@ -2787,29 +2786,6 @@ async def _open_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         )
         return True
     return False
-
-
-@rate_limited(admin_only=False)
-async def webapp_menu_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دیتای ارسالی از مینی‌اپ منو (دکمهٔ مربعی کنار کادر تایپ).
-
-    کاربر روی کارت‌های صفحهٔ /menu می‌زند → این‌جا action مربوطه در خودِ ربات باز می‌شود.
-    """
-    message = update.effective_message
-    web_app_data = getattr(message, "web_app_data", None)
-    if web_app_data is None:
-        return
-    raw = (web_app_data.data or "").strip()
-    try:
-        import json as _json
-        payload = _json.loads(raw)
-        action = str(payload.get("act") or "").strip().lower() if isinstance(payload, dict) else raw
-    except Exception:
-        action = raw
-
-    if await _open_menu_action(update, context, action):
-        return
-    await message.reply_text("📍 از منوی اصلی ربات استفاده کن: /start")
 
 
 @rate_limited(admin_only=False)
@@ -7914,8 +7890,6 @@ async def main():
     app.add_handler(CommandHandler("unlink", unlink_command))
     app.add_handler(CommandHandler("unblock", unblock_command))
     app.add_handler(MessageHandler(filters.StatusUpdate.USERS_SHARED, interactive_assign_user_shared))
-    # دیتای مینی‌اپ منو (دکمهٔ مربعی کنار کادر تایپ) → باز کردن بخش مربوطه در ربات
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_menu_data_handler), group=2)
     app.add_handler(MessageHandler(
         filters.Regex(r'^❌ انصراف از اختصاص$'), interactive_assign_cancel
     ))

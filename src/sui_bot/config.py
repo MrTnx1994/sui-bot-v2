@@ -133,7 +133,6 @@ class Settings:
     zarinpal_callback_bind: str
     trial_enabled: bool
     trial_inbound_id: int
-    menu_webapp_url: str
     # --- چند-ادمینی ---
     admin_ids: tuple[int, ...]
 
@@ -183,7 +182,6 @@ class Settings:
             zarinpal_callback_bind=str(env("ZARINPAL_CALLBACK_BIND", "127.0.0.1")),
             trial_enabled=env_bool("TRIAL_ENABLED", True),
             trial_inbound_id=env("TRIAL_INBOUND_ID", 0, cast=int),
-            menu_webapp_url=str(env("MENU_WEBAPP_URL", "")).strip(),
             admin_ids=tuple(
                 int(part.strip())
                 for part in str(env("ADMIN_IDS", "")).replace("،", ",").split(",")

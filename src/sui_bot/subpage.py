@@ -68,32 +68,6 @@ SUBPAGE_TITLE = os.getenv("SUBPAGE_TITLE", "اشتراک Vpnfiy")
 CACHE_TTL = float(os.getenv("SUBPAGE_CACHE_TTL", "10"))
 _cache: dict[str, tuple[float, dict | None]] = {}
 
-# لینک عمیق کارت‌های منو: یوزرنیم بات از env یا getMe با BOT_TOKEN
-BOT_USERNAME = os.getenv("BOT_USERNAME", "").lstrip("@")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-_bot_link_cache: tuple[str, float] = ("", 0.0)
-
-
-async def _bot_link() -> str:
-    global _bot_link_cache
-    link, expires = _bot_link_cache
-    if expires > time.time():
-        return link
-    uname = BOT_USERNAME
-    if not uname and BOT_TOKEN:
-        try:
-            timeout = aiohttp.ClientTimeout(total=8)
-            async with aiohttp.ClientSession(timeout=timeout) as sess:
-                async with sess.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe") as resp:
-                    data = await resp.json(content_type=None)
-                    if data.get("ok"):
-                        uname = str(data["result"].get("username") or "").lstrip("@")
-        except Exception as exc:
-            logger.warning("getMe failed (menu cards fall back to sendData): %s", exc)
-    link = f"https://t.me/{uname}" if uname else ""
-    _bot_link_cache = (link, time.time() + (86400 if BOT_USERNAME else 300))
-    return link
-
 
 def _fmt_gb(num_bytes: int | float | None) -> str:
     if num_bytes is None:
@@ -487,53 +461,9 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "ts": int(time.time())})
 
 
-# ---------------------------------------------------------------------------
-# مینی‌اپ منوی اصلی — دکمهٔ مربعی کنار کادر تایپ تلگرام این صفحه را باز می‌کند
-# ---------------------------------------------------------------------------
-# صفحهٔ دکمهٔ مربعی تلگرام — پرش‌صفحهٔ آنی: به‌محض باز شدن، «menu» را به ربات
-# می‌فرستد (باز/بسته کردن منو در چت) و خودش را می‌بندد. کاربر صفحه نمی‌بیند.
-# ---------------------------------------------------------------------------
-MENU_PAGE = """<!doctype html>
-<html dir="rtl" lang="fa">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<title>__TITLE__</title>
-<style>
-  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-         background:#0b1220; color:#e6edf7; font-family:"Vazirmatn",Tahoma,sans-serif; }
-  .box { text-align:center; }
-  .ico { font-size:44px; margin-bottom:10px; }
-</style>
-</head>
-<body>
-  <div class="box"><div class="ico">⬜</div><div>در حال باز کردن منو…</div></div>
-<script>
-  const tg = window.Telegram.WebApp;
-  tg.ready();
-  try { tg.sendData('menu'); } catch (e) { location.href = '__FALLBACK_LINK__'; }
-  setTimeout(function () { try { tg.close(); } catch (e) {} }, 400);
-</script>
-</body>
-</html>"""
-
-
-def _menu_page(bot_link: str = "") -> str:
-    page = MENU_PAGE.replace("__TITLE__", html.escape(SUBPAGE_TITLE))
-    fallback = f"{bot_link}?start=menu" if bot_link else "#"
-    return page.replace("__FALLBACK_LINK__", fallback)
-
-
-async def handle_menu(request: web.Request) -> web.Response:
-    return web.Response(text=_menu_page(await _bot_link()), content_type="text/html")
-
-
 def make_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/sub/{name}", handle_sub)
-    app.router.add_get("/sub/menu", handle_menu)   # قبل از /sub/{name} مهم نیست — aiohttp ثابت را ترجیح می‌دهد
-    app.router.add_get("/menu", handle_menu)
     app.router.add_get("/health", handle_health)
     return app
 

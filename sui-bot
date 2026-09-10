@@ -7,7 +7,7 @@
 #    sui-bot start|stop|restart|logs|journal
 #    sui-bot update       ← آپدیت از گیت‌هاب
 #    sui-bot config       ← ویرایش توکن‌ها/تنظیمات (nano)
-#    sui-bot menu         ← تست صفحهٔ منوی وب
+#    sui-bot menu         ← تست سلامت سرویس صفحهٔ اشتراک
 #    sui-bot uninstall    ← حذف کامل
 # ============================================================================
 set -uo pipefail
@@ -35,11 +35,9 @@ case $cmd in
     if [[ -f $ENV_FILE ]]; then
       echo "  ساب/دامنه  : $(g SUB_BASE_URL_OVERRIDE)"
       echo "  ربات       : $(g BOT_DISPLAY_NAME)"
-      echo "  بات یوزر   : @$(g BOT_USERNAME)"
       echo "  BOT_TOKEN  : $(m "$(g BOT_TOKEN)")"
       echo "  SUI_TOKEN  : $(m "$(g SUI_TOKEN)")"
       echo "  ادمین اصلی : $(g ADMIN_TELEGRAM_ID)"
-      echo "  منوی وب    : $(g MENU_WEBAPP_URL)"
     fi
     echo "═════════════════════════════════════════════════"
     echo "  دستورها: start | stop | restart | logs | update | config | menu | uninstall"
@@ -69,12 +67,13 @@ case $cmd in
     ;;
 
   menu)
-    url=$(g MENU_WEBAPP_URL)
-    [[ -n $url ]] || { echo "MENU_WEBAPP_URL در env خالی است — sui-bot-update یا install.sh را اجرا کن"; exit 1; }
+    base=$(g SUB_BASE_URL_OVERRIDE)
+    [[ -n $base ]] || { echo "SUB_BASE_URL_OVERRIDE در env خالی است — sui-bot-update یا install.sh را اجرا کن"; exit 1; }
+    url="${base%/sub}/health"
     echo "تست: $url"
-    code=$(curl -sk -o /tmp/menu_test.html -w '%{http_code}' -A "Mozilla/5.0" "$url")
-    if [[ $code == 200 ]] && grep -q "telegram-web-app.js" /tmp/menu_test.html; then
-      echo "✔ منو سالم است — دکمهٔ مربع تلگرام باید صفحهٔ منو را باز کند"
+    code=$(curl -sk -o /tmp/sub_test.json -w '%{http_code}' "$url")
+    if [[ $code == 200 ]] && grep -q '"ok"' /tmp/sub_test.json; then
+      echo "✔ سرویس صفحهٔ اشتراک سالم است ($base)"
     else
       echo "✗ پاسخ: HTTP $code — subpage را چک کن: systemctl status $SVC2"
     fi

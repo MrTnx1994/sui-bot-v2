@@ -1,7 +1,7 @@
 # sub-UI (install.sh substitutes domain/cert/port):
 #   everything proxies to our subpage service (127.0.0.1:8099) which serves
-#   the browser UI + Telegram menu page, and raw config feeds for VPN-app
-#   user agents.  The s-ui panel ports (2095/2096/2097) are never touched.
+#   the browser subscription UI and raw config feeds for VPN-app user agents.
+#   The s-ui panel ports (2095/2096/2097) are never touched.
 server {
     listen __UI_PORT__ ssl;
     server_name __DOMAIN__;
@@ -9,7 +9,7 @@ server {
     ssl_certificate __CERT__;
     ssl_certificate_key __CERTKEY__;
 
-    # subscription pages + Telegram menu mini-app (+ raw feed for VPN-app UAs)
+    # subscription pages (+ raw feed for VPN-app UAs)
     location /sub/ {
         proxy_pass http://127.0.0.1:8099;
         proxy_set_header Host $host;
