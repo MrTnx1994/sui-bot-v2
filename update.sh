@@ -121,7 +121,11 @@ if [[ -n $CUR_DOMAIN && -f $CUR_CERT && -f $CUR_KEY && -f $SRC_DIR/nginx/sub-ui.
       -e "s#__CERT__#${CUR_CERT}#g" \
       -e "s#__CERTKEY__#${CUR_KEY}#g" \
       "$SRC_DIR/nginx/sub-ui.conf.tmpl" > /etc/nginx/sites-available/sub-ui
-  nginx -t && systemctl reload nginx
+  if nginx -t; then
+    systemctl reload nginx
+  else
+    echo "   ⚠ nginx config test failed — not reloading"
+  fi
   _upsert_env "MENU_WEBAPP_URL"      "https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
   _upsert_env "SUB_BASE_URL_OVERRIDE" "https://${CUR_DOMAIN}:${CUR_PORT}/sub"
   echo "   ✔ nginx + MENU هم‌گام شد → https://${CUR_DOMAIN}:${CUR_PORT}/sub/menu"
