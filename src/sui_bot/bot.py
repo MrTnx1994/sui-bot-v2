@@ -32,8 +32,6 @@ from telegram import (
     KeyboardButton,
     KeyboardButtonRequestUsers,
     MenuButtonCommands,
-    MenuButtonWebApp,
-    WebAppInfo,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
@@ -228,8 +226,8 @@ EXPIRED_NOTIFICATIONS_FILE = managed_data_path("expired_notifications.json")
 CONNECTION_GUIDES_FILE = managed_data_path("connection_guides.json")
 connection_guide_store = ConnectionGuideStore(CONNECTION_GUIDES_FILE)
 
-# حذف یک‌بارهٔ کیبورد ثابت قدیمی «🏠» که روی کلاینت کاربران چسبیده است
-KEYBOARD_CLEANUP_FILE = managed_data_path("keyboard_cleanup.json")
+# حذف یک‌بارهٔ (صامت) کیبوردهای ثابت قدیمی «🏠»/«⬜» روی کلاینت کاربران
+KEYBOARD_CLEANUP_FILE = managed_data_path("keyboard_cleanup_v2.json")
 
 
 def _keyboard_cleanup_done(user_id: int) -> bool:
@@ -254,14 +252,15 @@ def _mark_keyboard_cleanup_done(user_id: int) -> None:
 
 
 async def _remove_stale_home_keyboard(update: Update, user_id: int) -> None:
-    """حذف کیبورد ثابت قدیمی از پایین چت — فقط یک‌بار برای هر کاربر."""
+    """حذف صامت کیبورد ثابت قدیمی از پایین چت — پیام فرستاده و فوراً پاک می‌شود."""
     if _keyboard_cleanup_done(user_id):
         return
     try:
-        await update.message.reply_text(
-            "⌨️ دکمهٔ قدیمی پایین چت حذف شد.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
+        msg = await update.message.reply_text("ok", reply_markup=ReplyKeyboardRemove())
+        try:
+            await msg.delete()
+        except TelegramError:
+            pass
     except TelegramError:
         logger.debug("stale keyboard removal failed", exc_info=True)
     _mark_keyboard_cleanup_done(user_id)
@@ -2541,14 +2540,6 @@ async def open_menu_message(update, context, text: str, reply_markup) -> None:
             return
         except TelegramError:
             context.chat_data.pop("menu_message_id", None)
-    if not context.chat_data.get("menu_keyboard_shown"):
-        # فقط یک‌بار: کیبوردِ دکمه چهارگوش؛ بعد از آن پایدار می‌ماند
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="⬜ با همین دکمهٔ کوچک، منو همین‌جا باز/بسته می‌شود.",
-            reply_markup=menu_toggle_keyboard(),
-        )
-        context.chat_data["menu_keyboard_shown"] = True
     msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
     context.chat_data["menu_message_id"] = msg.message_id
 
@@ -2611,16 +2602,9 @@ async def setup_bot_commands(app) -> None:
                 await app.bot.set_my_commands(_admin_commands, scope=BotCommandScopeChat(admin_id))
             except TelegramError:
                 logger.warning("Could not register admin commands for %s", admin_id)
-        menu_url = getattr(SETTINGS, "menu_webapp_url", "") or ""
-        if menu_url:
-            await app.bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(text="منو", web_app=WebAppInfo(url=menu_url))
-            )
-            logger.info("Square button = one-tap menu open/close via %s", menu_url)
-        else:
-            await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-            logger.info("Square button set to native command list")
-        logger.info("Telegram command menu registered")
+        # بدون وب‌اپ — دکمهٔ مربعی = لیست استاندارد دستورات تلگرام
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        logger.info("Telegram command menu registered; square button = native command list")
     except TelegramError as exc:
         logger.warning("Could not register bot commands: %s", exc)
 
