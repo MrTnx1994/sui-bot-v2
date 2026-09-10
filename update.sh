@@ -63,15 +63,18 @@ rm -rf "$SRC_DIR.old"
 [[ -d $SRC_DIR ]] && mv "$SRC_DIR" "${SRC_DIR}.old"
 mv "${SRC_DIR}.new" "$SRC_DIR"
 
-"$APP_DIR/.venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
-"$APP_DIR/.venv/bin/pip" install -q --upgrade pip
-"$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
-
-# اگر venv از پایه خراب بود، از نو بساز و نصب کن
-if ! "$VENV_PY" -c 'import sui_bot' 2>/dev/null; then
-  say "venv بازسازی می‌شود"
+# اگر venv وجود نداشت یا خراب بود، از نو بساز
+if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
+  say "venv وجود ندارد — از نو ساخته می‌شود"
   rm -rf "$APP_DIR/.venv"
   python3 -m venv "$APP_DIR/.venv"
+fi
+if ! "$VENV_PY" -c 'import sui_bot' 2>/dev/null; then
+  "$APP_DIR/.venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
+  "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
+  "$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
+else
+  "$APP_DIR/.venv/bin/pip" uninstall -y -q sui-bot 2>/dev/null || true
   "$APP_DIR/.venv/bin/pip" install -q --upgrade pip
   "$APP_DIR/.venv/bin/pip" install -q "$SRC_DIR"
 fi
